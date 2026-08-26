@@ -1,4 +1,0 @@
-package  ue
-if-file  ue
-
-f 0755 /bin/ue          ue

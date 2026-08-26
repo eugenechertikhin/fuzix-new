@@ -1,0 +1,12 @@
+#!/bin/sh
+# Fake asz80: create an empty object for the .S source (honor -o out).
+out=""; src=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "-o" ] && out="$a"
+  case "$a" in *.S|*.s) src="$a";; esac
+  prev="$a"
+done
+if [ -z "$out" ]; then
+  base=$(basename "$src"); base=${base%.*}; out="$base.o"
+fi
+: > "$out"

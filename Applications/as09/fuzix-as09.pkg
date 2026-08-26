@@ -1,5 +1,0 @@
-package  as09
-if-file  as09
-
-f 0755 /usr/bin/as09  as09
-

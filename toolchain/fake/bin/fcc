@@ -1,0 +1,33 @@
+#!/bin/sh
+# Fake fcc for the fuzix-new CMake build.
+#
+# It does NOT compile anything. Two modes, matching how the build drives fcc:
+#   * compile (a .c/.S/.s source is present): create an empty <basename>.o for
+#     that source in the current directory (real fcc emits <basename>.o in cwd).
+#   * link (no source, but -o TARGET is given, e.g. the ld<cpu> app link which
+#     is `fcc -m<cpu> -X -s <objs> -L.. -lc<cpu> -o app -M`): just touch TARGET.
+# This lets the whole CMake graph (lib + bin) run end-to-end on a host without
+# the real Fuzix Compiler Kit.
+#
+# Point CMake at it with:
+#   -DFUZIX_TOOLCHAIN_PREFIX=<this toolchain/fake dir>
+src=""
+out=""
+prev=""
+for a in "$@"; do
+    case "$a" in
+        *.c|*.S|*.s) src="$a" ;;
+    esac
+    [ "$prev" = "-o" ] && out="$a"
+    prev="$a"
+done
+
+if [ -n "$src" ]; then
+    base=$(basename "$src"); base=${base%.*}
+    : > "$base.o"
+elif [ -n "$out" ]; then
+    : > "$out"
+else
+    echo "fake fcc: no source file and no -o target in args: $*" >&2
+    exit 1
+fi

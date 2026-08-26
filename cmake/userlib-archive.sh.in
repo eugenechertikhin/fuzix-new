@@ -1,0 +1,31 @@
+#!/bin/sh
+# ---------------------------------------------------------------------------
+# userlib-archive.sh - archive a set of objects into a userland library.
+#
+# Usage: userlib-archive.sh <output.a> <objlistfile> [extra objs...]
+#
+# The object list file has one path per line (produced by the syscall step);
+# any extra objects are the statically-known .o files compiled by CMake. For
+# the fcc targets upstream orders members with lorder<cpu>|tsort, but that
+# needs fcc's nm (nm<cpu>); when it is unavailable we archive in list order,
+# which the ld<cpu> wrapper (a full fcc relocatable link) tolerates.
+#
+# Configured by cmake/UserLib.cmake (do not edit the generated copy).
+# ---------------------------------------------------------------------------
+set -e
+
+AR="@USER_AR@"
+OUT="$1"; shift
+LISTFILE="$1"; shift
+
+OBJS=""
+if [ -n "$LISTFILE" ] && [ -f "$LISTFILE" ]; then
+    while IFS= read -r o; do
+        [ -n "$o" ] && OBJS="$OBJS $o"
+    done < "$LISTFILE"
+fi
+OBJS="$OBJS $*"
+
+rm -f "$OUT"
+# shellcheck disable=SC2086
+"$AR" rc "$OUT" $OBJS

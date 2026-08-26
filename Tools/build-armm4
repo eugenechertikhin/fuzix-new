@@ -1,7 +1,0 @@
-#!/bin/sh
-
-X=`which arm-none-eabi-gcc`
-if [ "$X" = "" ]; then
-	echo "gcc: arm-none-eabi-gcc is required"
-	exit 1
-fi

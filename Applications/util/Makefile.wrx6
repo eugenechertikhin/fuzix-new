@@ -1,6 +1,0 @@
-APPOTHER = cpuinfo
-include Makefile.common
-
-cpuinfo: cpuinfo.o cpuinfo-wrx6.o
-	$(LINKER) $(LINKER_OPT) -o $@ $(CRT0) $^ $(LINKER_TAIL) 
-

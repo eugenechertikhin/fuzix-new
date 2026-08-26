@@ -1,4 +1,4 @@
-#include "../lib/8080fixedbank-core.S"
+#include "8080fixedbank-core.S"
 
 ;
 ;	Fast copy 512 bytes from H to D

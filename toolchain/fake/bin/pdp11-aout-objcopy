@@ -1,0 +1,8 @@
+#!/bin/sh
+# Fake pdp11-aout-objcopy: <in> -O binary <out>  -> copy in to out.
+in=""; out=""
+set -- "$@"
+in="$1"; out="${@: -1}"   # first arg = input, last arg = output
+# POSIX-safe last arg:
+for a in "$@"; do out="$a"; done
+cp "$in" "$out"

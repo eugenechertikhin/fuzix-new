@@ -1,5 +1,0 @@
-ASRC = as1.c as6.c
-
-TARGET_DEF = -DTARGET_Z80
-
-include Makefile.common

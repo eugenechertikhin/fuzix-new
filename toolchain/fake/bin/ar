@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+# Fake `ar` for the fuzix-new CMake build.
+#
+# Apple's /usr/bin/ar refuses to archive anything that is not a Mach-O object,
+# so it cannot bundle the (custom-format, and here empty) fcc/ld objects the
+# fake toolchain produces. This stand-in writes a real GNU-format `ar` archive
+# of whatever files it is given, so the `lib`/`bin` build graph can be exercised
+# end-to-end and the member list is inspectable with a GNU `ar t`.
+#
+# It implements just the `rc`/`rcs`/`cr` forms used by the build. A real build
+# host uses GNU ar via -DFUZIX_USER_AR=... instead of this.
+import sys, os
+
+args = sys.argv[1:]
+if not args:
+    sys.exit("fake ar: no operation")
+op = args[0]
+# tolerate the common ordering: <flags> <archive> <members...>
+if op.lstrip('-').startswith(('r', 'c', 'q', 's')) or set(op.lstrip('-')) <= set('rcsqTLv'):
+    archive = args[1]
+    members = args[2:]
+else:
+    sys.exit(f"fake ar: unsupported op '{op}'")
+
+def pad(b):
+    return b + (b'\n' if len(b) % 2 else b'')
+
+with open(archive, 'wb') as out:
+    out.write(b'!<arch>\n')
+    for m in members:
+        try:
+            with open(m, 'rb') as f:
+                data = f.read()
+        except OSError as e:
+            sys.exit(f"fake ar: {e}")
+        name = os.path.basename(m)
+        if len(name) > 15:
+            name = name[:15]
+        hdr = "%-16s%-12d%-6d%-6d%-8o%-10d`\n" % (name + '/', 0, 0, 0, 0o644, len(data))
+        out.write(hdr.encode())
+        out.write(pad(data))

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Fake ia16-elf-objcopy (unused by the i8086 link flow): copy last->prev arg.
+in=""; out=""
+for a in "$@"; do case "$a" in -*) ;; *) in="$out"; out="$a";; esac; done
+[ -n "$in" ] && cp "$in" "$out" 2>/dev/null || : > "$out"

@@ -36,9 +36,8 @@ struct match rules[] = {
     { NULL, NULL }
 };
 
-static void symbol_line(const char *p)
-{
-    char name[32];
+static void symbol_line(const char *p) {
+    char name[33];
     unsigned addr;
     char type;
     struct match *m;

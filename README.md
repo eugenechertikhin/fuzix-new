@@ -1,122 +1,288 @@
-** ENGINEERING WORK IN PROGRESS **
+# FuzixOS: Because Small Is Beautiful
 
-The Z80 side of the tree is currently moving to the new compiler including
-work on the compiler, linker and kernel. Thus some bits of it require you
-have absolutely bleeding edge pieces all around. I would suggest avoiding
-working on this tree for Z80 stuff right now. Non Z80 should be just fine.
+FUZIX is a fusion of various elements from the assorted UZI forks and branches beaten together into some kind of semi-coherent platform and then extended from V7 to somewhere in the SYS3 to SYS5.x world with bits of POSIX thrown in for good measure. Various learnings and tricks from ELKS and from OMU also got blended in
 
-**FuzixOS**: Because Small Is Beautiful
+This is the rework of well-known FuzixOS project.  A CMake-driven build of the [FUZIX](https://github.com/EtchedPixels/FUZIX) kernel where the **target CPU, platform, memory manager, filesystem and device drivers are selected with build flags** instead of per-platform Makefiles.
 
-This is the initial public tree for the FuzixOS project. It is not yet useful although you can build and boot it and run
-test application code. A lot of work is needed on the utilities and libraries.
+Several targets are ported so far (most built with the Fuzix Compiler Kit `fcc`; PDP-11 and 8086 use standard gcc cross toolchains):
 
-# FUZIX
+| CPU     | Platform  | Board                        |
+|---------|-----------|------------------------------|
+| `i8080` | `v8080`   | Z80Pack virtual 8080 machine |
+| `i8080` | `rcbus-8080` | RC2014-bus 8080 SBC (IDE/SCSI/CH375/RTC)  |
+| `z80u`  | `z80pack` | Z80Pack virtual Z80 machine  |
+| `pdp11` | `pdp11`   | DEC PDP-11 (swap-only, gcc)  |
+| `i8086` | `ibmpc`   | IBM PC / clones (ia16 gcc, core build only) |
 
-FUZIX is a fusion of various elements from the assorted UZI forks and
-branches beaten together into some kind of semi-coherent platform and then
-extended from V7 to somewhere in the SYS3 to SYS5.x world with bits of POSIX
-thrown in for good measure. Various learnings and tricks from ELKS and from
-OMU also got blended in
+Per-CPU settings live in `cmake/cpu-<cpu>.cmake`, per-platform link recipes in `cmake/platform-<platform>.cmake`, so more CPUs/platforms can be added later. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full roadmap of all 30 CPU ports and 132 boards, plus deep-dives on the [ZX Spectrum / Z80](docs/ZX.md) and [x86](docs/X86.md) families.
 
-# Pre-built images
+## Layout
 
-Some pre-built filesystems are now available on www.fuzix.org, and other
-images should follow in time.
+```
+fuzix-new/
+├── CMakeLists.txt                # shared options; includes the cpu/platform fragments
+├── cmake/
+│   ├── toolchain-i8080.cmake     # generic fcc cross toolchain (also used by z80u)
+│   ├── toolchain-z80u.cmake      # alias of the above for z80u
+│   ├── toolchain-pdp11.cmake     # pdp11-aout gcc toolchain
+│   ├── toolchain-i8086.cmake     # ia16-elf gcc toolchain
+│   ├── cpu-i8080.cmake           # i8080: -m8080, ld8080, lib8080.a
+│   ├── cpu-z80u.cmake            # z80u:  -mz80,  ldz80,  libz80.a, normal|thunked
+│   ├── cpu-pdp11.cmake           # pdp11: gcc kind, ld+objcopy, simple MM
+│   ├── cpu-i8086.cmake           # i8086: gcc kind, ld -> fuzix.elf, bank8086 MM
+│   ├── platform-v8080.cmake      # v8080 link recipe (object order, link flags)
+│   ├── platform-z80pack.cmake    # z80pack link recipe
+│   ├── platform-rcbus-8080.cmake # rcbus-8080 link recipe
+│   ├── platform-pdp11.cmake      # pdp11 link recipe (fuzix.ld)
+│   ├── platform-ibmpc.cmake      # ibmpc link recipe (fuzix.ld)
+│   ├── FuzixBuild.cmake          # compile/link helper functions (fcc + gcc kinds)
+│   ├── link-image.sh.in          # fcc: <ld> + pack85 image link (template)
+│   ├── link-image-pdp11.sh.in    # gcc: ld -T fuzix.ld + objcopy (template)
+│   ├── link-image-8086.sh.in     # gcc: ld -T fuzix.ld -> fuzix.elf (template)
+│   └── diskimage.sh.in           # bootblock + boot.dsk/drivep.dsk (template)
+└── kernel/
+    ├── core/       # portable kernel: process, vfs, syscalls, tty, swap, mm.c…
+    ├── cpu/
+    │   ├── i8080/  # 8080 low-level: context switch, usermem, entry (was cpu-8080)
+    │   ├── z80u/   # z80u low-level: normal + thunked variants (was cpu-z80u)
+    │   ├── pdp11/  # pdp11 low-level (was cpu-pdp11)
+    │   └── i8086/  # 8086 low-level: lowlevel/usermem, kernel-8086.def (was cpu-8086)
+    ├── mm/         # memory managers (bankfixed, simple, bank8k, flat, …)
+    ├── lib/        # asm helpers: 8080fixedbank / z80ufixedbank (bank switching)
+    ├── platform/
+    │   ├── v8080/      # board: crt0, main, devtty, memory map, config.h
+    │   ├── z80pack/    # board: crt0, main, memory map, config.h
+    │   ├── rcbus-8080/ # RC2014 8080 SBC: SCSI/IDE/CH375/RTC, loader, config.h
+    │   ├── pdp11/      # DEC PDP-11: crt0, fuzix.ld, RK/RX drivers, config.h
+    │   └── ibmpc/      # IBM PC: crt0, fuzix.ld, BIOS disk/con/vid, 8259A, config.h
+    ├── dev/           # shared drivers: TinyDisk (ide/scsi), ds1302 RTC, ch375…
+    ├── dev/z80pack/   # Z80Pack drivers: devfd (floppy), devtty, devlpr, devrtc
+    ├── include/       # kernel headers
+    └── tools/         # host tools: makeversion, pack85
+```
 
-# Supporting Fuzix
+## Toolchain (cross compilation)
 
-As this gets asked a bit. The best way to support Fuzix is to contribute
-code and/or docs. It's really an art project in computing. 
+There are two **toolchain kinds**. The 8080/Z80 targets use the **Fuzix
+Compiler Kit** (`fcc`) + **Fuzix Bintools**; the PDP-11 and 8086 use standard
+**gcc** cross toolchains (`pdp11-aout-gcc` / `ia16-elf-gcc`) with a linker
+script — PDP-11 flattens with `objcopy`, the 8086 links straight to an ELF.
 
-If you want to spend money then please just buy a homeless person a pizza or a
-coat or something like that. If you are changing electricity suppliers in the
-UK to Octopus then signing up through this link gets both of us £50. Not an
-endorsement, Octopus merely suck less than other UK energy suppliers.
+- https://github.com/EtchedPixels/Fuzix-Compiler-Kit
+- https://github.com/EtchedPixels/Fuzix-Bintools
 
-https://share.octopus.energy/amber-calf-514
+For the fcc targets the linker and C library are **derived from the selected
+CPU** and the toolchain prefix, so a single fcc toolchain file serves both:
 
-## Tools
+| CPU     | Kind | Compiler     | Linker   | Post-link | C library   |
+|---------|------|--------------|----------|-----------|-------------|
+| `i8080` | fcc  | `fcc -m8080` | `ld8080` | `pack85`  | `lib8080.a` |
+| `z80u`  | fcc  | `fcc -mz80`  | `ldz80`  | `pack85`  | `libz80.a`  |
+| `pdp11` | gcc  | `pdp11-aout-gcc` | `pdp11-aout-ld -T fuzix.ld` | `objcopy -O binary` | (gcc libc) |
+| `i8086` | gcc  | `ia16-elf-gcc`   | `ia16-elf-ld -T fuzix.ld`   | (none, ELF image)   | (gcc libc) |
 
-For the 6800, 8080, 8085, Z80 and Z180 the code is now built with the Fuzix C
-Compiler and Bintools which are also in github. See instructions for
-building them. Some kernels still need the customised SDCC 3.8 from from
-this github. 65C816 and Z8 are a work in progress moving to this compiler.
+The PDP-11 tools are expected on `PATH`; point `-DFUZIX_PDP11_PREFIX=<dir>` at them if they live elsewhere. Use `cmake/toolchain-pdp11.cmake` for that target. The 8086 tools work the same way via `cmake/toolchain-i8086.cmake` and `-DFUZIX_IA16_PREFIX=<dir>`.
 
-6502 is currently built with cc65 and a distribution version should work.
+The toolchain location is fully configurable via `cmake/toolchain-i8080.cmake` (or its `cmake/toolchain-z80u.cmake` alias). The default install prefix is `/opt/fcc`; override it as needed:
 
-6303/6803 are built with CC6303 (again in this github)
+```sh
+# whole prefix
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
+      -DFUZIX_TOOLCHAIN_PREFIX=$HOME/cross/fcc
 
-6809 is built with lwtools and the including gcc fork.
+# or point at the compiler / linker / libc individually
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
+      -DFUZIX_CC=/path/fcc -DFUZIX_LD=/path/ld8080 -DFUZIX_LIBC=/path/lib8080.a
+```
 
-Other targets use gcc variants. See the target specific information.
+`FUZIX_TOOLCHAIN_PREFIX` may also be set in the environment.
 
-## What does FUZIX have over UZI
+The host tools (`makeversion`, `pack85`) are compiled with the **host** compiler automatically — no configuration needed.
 
-* Support for multiple processes in banked memory (as per UZI180) but
-	with Minix style chmem and efficient use of bank allocations.
-* Support for multiple processes via hard disk or non mappable RAM
-    drive switching (as per UZI, UZIX).
-* Support for "real" swapping combined with banked memory.
-* Proper sane off_t and lseek
-* Normal dev_t
-* 30 character filenames
-* Proper sane time_t
-* System 5 signals
-* Posix termios (does all the original UZI tty did but much can be added)
-* Blocking on carrier for terminals
-* Optimisations to avoid bogus uarea copying compared to UZI180
-* More modern system call API: 3 argument open, mkdir, rmdir, rename,
-	chroot (with correct .. semantics), fchdir, fchmod, fchown, fstat,
-	fcntl, setpgrp, sighold and friends, waitpid, setpgrp, nice
-	O_NDELAY, O_CLOEXEC, F_SETFL, F_DUPFD etc
-* Address validation checks on all syscall copies
-* Builds with a modern ANSI C compiler (SDCC)
-* Kernel boots to userspace on 6303, 6502, 65C816, 6800, 68000, 6803, 6809, 68HC11, 8080, 8085, arm32, esp8266, MSP430 (bitrotted) and eZ80/Z80/Z180
-* Core code can be built for 6303, 6502, 65C816, 68000, 6800, 6803, 6809, 68HC11, 8080, 8085, 8086, arm32, esp8266, MSP430, pdp11, rabbit r2k/r3k and eZ80/Z80/Z180 so should be far more portable
-* Core architecture designed to support building and maintaining
-	multiple target machines without forking each one
-* Helpers to make many bits of implementation wrappers to core code
-* Lots more bugs right now
+### Building without the real toolchain (fake toolchain)
 
-## What does UZI have over FUZIX
+The repo ships a **stub toolchain** in [`toolchain/fake/`](toolchain/fake/) so you can exercise the *entire* build graph — every compile, the version generation, the link and the real `pack85`/`dd` steps — on a machine that does **not** have the Fuzix Compiler Kit / Bintools installed. This is useful for verifying the CMake wiring, the module selection flags and the `diskimage` target itself.
 
-* Can run in 64K of RAM (32K kernel/32K user). FUZIX needs
-	banked ROM or similar to pull this off. If you have banked
-	ROM then our kernel footprint in RAM is about 8K plus userspace
-	plus any framebuffers and similar overhead. On a 6809 it's just
-	about possible to run in a straight 64K
+It is **not** a real compiler:
 
-## What do the UZI branches have that FUZIX has not yet integrated
+- `toolchain/fake/bin/fcc` — creates an empty `<basename>.o` per source (no real code is generated); works for both `-m8080` and `-mz80`.
+- `toolchain/fake/bin/ld8080`, `toolchain/fake/bin/ldz80` — write a 40 KB zero image plus a `pack85`-compatible symbol map (they do not actually link).
+- `toolchain/fake/bin/asz80` — stub assembler used for the z80pack boot block.
+- `toolchain/fake/bin/pdp11-aout-{gcc,ld,objcopy,as}` — stubs for the pdp11 gcc flow (build with `-DFUZIX_PDP11_PREFIX=$PWD/toolchain/fake/bin`).
+- `toolchain/fake/bin/ia16-elf-{gcc,ld,objcopy}` — stubs for the 8086 gcc flow (build with `-DFUZIX_IA16_PREFIX=$PWD/toolchain/fake/bin`).
+- `toolchain/fake/lib/{8080/lib8080.a,z80/libz80.a}` — empty placeholder archives.
 
-* Symbolic links (UZIX)
-* Various clever fusions of syscalls that may save a few bytes
-	(UZIX)
-* setprio (UZIX)
-* Rather crude loadable drivers (UZIX)
-* Use of __naked and __asm for Z80 specific bits to avoid more
-	.S files than are needed (UMZIX)
+Build with it by pointing `FUZIX_TOOLCHAIN_PREFIX` at the fake tree:
 
-Plus OMU has a really clever function passing trick for open/creat and
-friends, while UMZIX has a neat unified "make anything" function.
+```sh
+# i8080 kernel image
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
+      -DFUZIX_TOOLCHAIN_PREFIX=$PWD/toolchain/fake
+cmake --build build
+# -> build/image/fuzix.bin        (a dummy image, but the pipeline ran for real)
 
-## What Key Features Are Missing Still
+# z80u kernel image
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80u.cmake \
+      -DFUZIX_CPU=z80u -DFUZIX_PLATFORM=z80pack \
+      -DFUZIX_TOOLCHAIN_PREFIX=$PWD/toolchain/fake
+cmake --build build
 
-* ptrace, most of ulimit
-* root reserved disk blocks
-* banked executables
-* TCP/IP (in progress)
-* select/poll() (in progress)
-* Support for > 32MB filesystems (but first figure out how to fsck
-	a giant fs on a slow 8bit micro!)
-* Smarter scheduler
-* Optimisations for disk block/inode allocator (2.11BSD)
+# boot floppy + root disk (either target)
+cmake --build build --target diskimage
+# -> build/images/boot.dsk, build/images/drivep.dsk
+```
 
-## Tool Issues
+The produced `fuzix.bin` / `boot.dsk` are dummies (filled from the stub tools), but the whole build/link/pack/dd pipeline executes exactly as it would with the real toolchain — so command lines, object ordering, generated headers and image geometry are all verified. See [`toolchain/fake/README.md`](toolchain/fake/README.md) for details.
 
-* 6809 gcc and cc65 don't have long long 64bit (for sane time_t)
-* None of the above have an O88 style common sequence compressor
-* CC65 can't handle larger objects on stack, and lacks float support
-* We need a 'proper' 65C816 C compiler
+For a real kernel, install the actual toolchain and point `FUZIX_TOOLCHAIN_PREFIX` at it (default `/opt/fcc`) instead.
 
-[travis-image]: https://travis-ci.org/EtchedPixels/FUZIX.png?branch=master
-[travis-url]: https://travis-ci.org/EtchedPixels/FUZIX
+## Build
+
+```sh
+# i8080 / v8080  (defaults)
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake
+cmake --build build
+# -> build/image/fuzix.bin   (packed, loadable kernel image)
+
+# z80u / z80pack
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80u.cmake \
+      -DFUZIX_CPU=z80u -DFUZIX_PLATFORM=z80pack
+cmake --build build
+
+# pdp11 / pdp11  (gcc toolchain: pdp11-aout-gcc on PATH, or -DFUZIX_PDP11_PREFIX=...)
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-pdp11.cmake \
+      -DFUZIX_CPU=pdp11 -DFUZIX_PLATFORM=pdp11
+cmake --build build
+
+# i8086 / ibmpc  (gcc toolchain: ia16-elf-gcc on PATH, or -DFUZIX_IA16_PREFIX=...)
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8086.cmake \
+      -DFUZIX_CPU=i8086 -DFUZIX_PLATFORM=ibmpc
+cmake --build build
+# -> build/image/fuzix.elf   (core build only: no loader/drivers yet)
+```
+
+CMake prints a configuration summary showing exactly which modules were
+selected (CPU, platform, linker, memory manager, object count, …).
+
+
+### Build flags
+
+| Option                     | Default     | Meaning |
+|----------------------------|-------------|----------------------------------------------|
+| `FUZIX_CPU`                | `i8080`     | Target CPU: `i8080`, `z80u`, `pdp11` or `i8086` |
+| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `z80pack`, `rcbus-8080`, `pdp11` or `ibmpc` |
+| `FUZIX_Z80U_MODE`          | `normal`    | z80u low-level: `normal` (common RAM) or `thunked` |
+| `FUZIX_MM`                 | `bankfixed` | Memory manager (see below)                   |
+| `FUZIX_MEMALLOC`           | `none`      | User allocator: `none` or `malloc`           |
+| `FUZIX_MULTIPROCESS`       | `ON`        | Multiple processes resident (`CONFIG_MULTI`) |
+| `FUZIX_FS_NATIVE`          | `ON`        | Native inode/superblock filesystem           |
+| `FUZIX_BLOCKSIZE`          | `512`       | Block buffer size: `512` or `400`            |
+| `FUZIX_EXECFORMAT`         | `16`        | exec loader: `16`, `32`, `elf32`, `none`     |
+| `FUZIX_NET`                | `OFF`       | TCP/IP (BSD sockets)                         |
+| `FUZIX_LEVEL2`             | `OFF`       | Level-2 features (sessions/job control)      |
+| `FUZIX_SELECT`             | `OFF`       | `select()`/`poll()`                          |
+| `FUZIX_VT`                 | `OFF`       | Console video / virtual terminals            |
+| `FUZIX_AUDIO`              | `OFF`       | Audio layer                                  |
+| `FUZIX_INPUT`              | `OFF`       | Input layer                                  |
+| `FUZIX_KMOD`               | `OFF`       | Loadable modules                             |
+| `FUZIX_DRIVER_TTY`         | `ON`        | v8080 platform console/serial TTY driver     |
+| `FUZIX_DRIVER_Z80PACK_FD`  | `ON`        | Z80Pack virtual floppy block driver          |
+| `FUZIX_DRIVER_Z80PACK_TTY` | `ON`        | Z80Pack console/serial TTY (z80pack)         |
+| `FUZIX_DRIVER_Z80PACK_LPR` | `ON`        | Z80Pack line printer (z80pack)               |
+| `FUZIX_DRIVER_Z80PACK_RTC` | `ON`        | Z80Pack real-time clock (z80pack)            |
+| `FUZIX_DRIVER_TINYDISK`    | `ON`        | TinyDisk generic block layer (rcbus-8080)    |
+| `FUZIX_DRIVER_IDE`         | `ON`        | IDE / PPIDE disk (rcbus-8080)                |
+| `FUZIX_DRIVER_SCSI`        | `ON`        | SCSI disk + NCR5380 (rcbus-8080)             |
+| `FUZIX_DRIVER_CH375`       | `ON`        | CH375 USB mass storage (rcbus-8080)          |
+| `FUZIX_DRIVER_RTC_DS1302`  | `ON`        | DS1302 real-time clock (rcbus-8080)          |
+| `FUZIX_DRIVER_JOYSTICK`    | `ON`        | Joystick + core input layer (rcbus-8080)     |
+
+`FUZIX_Z80U_MODE` picks the Z80 low-level variant: `normal` for boards with common RAM (a region mapped in every bank — the usual case, including `z80pack`), `thunked` for boards where the whole 64K switches at once. See [ARCHITECTURE.md](ARCHITECTURE.md#memory-model--banking) for the banking model in general, and [ZX.md](docs/ZX.md) for the ZX Spectrum / Z80 platform specifics (128K memory map, `CODE1..CODE4` banks, DivIDE/DivMMC, the 32K process limit).
+
+### Memory managers (`FUZIX_MM`)
+
+Each choice selects the matching `mm/*.c` source and the corresponding `CONFIG_*` define:
+
+| Value         | Source             | Define               |
+|---------------|--------------------|----------------------|
+| `bankfixed`   | `mm/bankfixed.c`   | `CONFIG_BANK_FIXED`  |
+| `banksplit`   | `mm/banksplit.c`   | `CONFIG_BANK_FIXED`  |
+| `simple`      | `mm/simple.c`      | `CONFIG_SWAP_ONLY`   |
+| `bank8k`      | `mm/bank8k.c`      | `CONFIG_BANK8`       |
+| `bank16k`     | `mm/bank16k.c`     | `CONFIG_BANK16`      |
+| `bank16k_low` | `mm/bank16k_low.c` | `CONFIG_BANK16_LOW`  |
+| `bank32k`     | `mm/bank32k.c`     | `CONFIG_BANK32`      |
+| `bank16kfc`   | `mm/bank16kfc.c`   | `CONFIG_BANK16FC`    |
+| `bank8086`    | `mm/bank8086.c`    | `CONFIG_BANK_8086`   |
+| `bank65c816`  | `mm/bank65c816.c`  | `CONFIG_BANK_65C816` |
+| `flat`        | `mm/flat.c`        | `CONFIG_FLAT`        |
+| `flat_small`  | `mm/flat_small.c`  | `CONFIG_FLAT_SMALL`  |
+| `unbanked`    | `mm/unbanked.c`    | —                    |
+
+> The default (`bankfixed`) matches both stock boards (`v8080` and `z80pack`), whose hardware memory maps (`MAP_SIZE`, `PROGTOP`, …) are defined in `kernel/platform/<board>/config.h`. Choosing a manager that does not match the board's hardware map will build but is not expected to run — the flag mechanism is there so new boards/CPUs can drive it.
+
+Example — swap manager + networking, no virtual floppy:
+
+```sh
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
+      -DFUZIX_MM=simple -DFUZIX_NET=ON -DFUZIX_DRIVER_Z80PACK_FD=OFF
+```
+
+## Disk images (`diskimage` target)
+
+Beyond the raw `fuzix.bin` kernel image, a `diskimage` target builds the bootable media, mirroring the selected platform's `diskimage` rule:
+
+```sh
+cmake --build build --target diskimage
+```
+
+The recipe is **platform-specific** (two styles):
+
+### Boot-floppy style (`v8080`, `z80pack`)
+
+Produces, in `FUZIX_IMAGES_DIR` (default `build/images/`):
+
+- **`boot.dsk`** — a 256256-byte boot floppy (77 tracks × 26 sectors × 128 bytes). The boot sector is assembled from the platform's `bootblock.S`, padded to a full disk, and the kernel is written starting at track 58 (byte offset 193024), skipping the kernel's low load-origin bytes:
+
+| Platform  | Boot assembler        | Kernel skip | Link origin |
+|-----------|-----------------------|-------------|-------------|
+| `v8080`   | `fcc -m8080 -c` + `ld8080 -b` | 256 bytes | `-C 0x0100 -S 0xE800` |
+| `z80pack` | `asz80` + `ldz80 -b`  | 136 bytes | `-C 0x0088 -S 0xF400 -X 0xE900` |
+
+- **`drivep.dsk`** — a 512 MB root hard disk. If a root filesystem image is supplied it is written at offset 0; otherwise the disk is left blank (with a warning).
+
+### IDE-loader style (`rcbus-8080`)
+
+Assembles the platform's `loader.S` (linked high at `0xFE00`), then lays out a single **`disk.img`**: loader at sector 0, kernel at sector 1, root filesystem at sector 2048. A partition-table base image and the filesystem live outside this tree — supply them for a bootable image:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `FUZIX_PARTTAB` | *(empty)* | Partition-table base image (else a blank 40 MB disk) |
+| `FUZIX_FILESYS_IMG` | *(empty)* | Root filesystem written at sector 2048 |
+
+Relevant options:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `FUZIX_IMAGES_DIR` | `build/images` | Output directory for the disk images |
+| `FUZIX_FILESYS_IMG` | *(empty)* | Root filesystem image placed at the start of `drivep.dsk` |
+
+```sh
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
+      -DFUZIX_FILESYS_IMG=/path/to/filesys.img
+cmake --build build --target diskimage
+```
+
+> The root filesystem image itself is produced by the FUZIX userland tools (not part of this kernel tree). Point `FUZIX_FILESYS_IMG` at one to get a ready-to-run `drivep.dsk`.
+
+## Notes / provenance
+
+- Sources are copied from the upstream FUZIX tree, restricted to what the ported targets need. Core kernel `.c` files are CPU-independent and shared. Other CPUs, platforms, userland (`Applications/`, `Library/`) and docs were **not** copied.
+- The module-selection switches `CONFIG_MULTI` and `CONFIG_BANK_FIXED` were removed from each board's `config.h` and are now supplied by CMake so the build flags control them. The hardware constants stay in `config.h`.
+- The original tree resolves some assembly `#include`s via a `build` symlink and `../cpu-<cpu>/`, `../../lib/` relative paths. Because this tree reorganises files under `kernel/cpu/<cpu>` and `kernel/lib`, those path-includes were flattened to plain filenames resolved through `-I` (cpu dir, platform dir, `kernel/lib`). Include resolution was verified with a real preprocessor (`cc -E`), which the stub `fcc` cannot catch.
+- Per-platform compile/link command lines mirror each board's original Makefile: `fcc -X -m8080 -c -Os …` / `fcc -X -mz80 -c -O …`, then `ld8080`/`ldz80` with the board's origin/split/discard flags, then `pack85`.
+- Both the kernel image (`fuzix.bin`) and the bootable media (`diskimage`
+  target → `boot.dsk` / `drivep.dsk`) are produced.
+- `toolchain/fake/` holds stub `fcc`/`ld8080`/`ldz80`/`asz80` for exercising the
+  whole build graph without the real cross toolchain — see
+  `toolchain/fake/README.md`.

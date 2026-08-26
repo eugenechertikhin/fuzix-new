@@ -1,9 +1,0 @@
-define basesympat __sectionbase_%s__
-define lensympat __sectionlen_%s__
-section .header load 0x8000
-section .text
-section .text.hot
-section .text.unlikely
-section .text.startup
-section .data
-section .bss

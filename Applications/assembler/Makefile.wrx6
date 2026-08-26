@@ -1,5 +1,0 @@
-ASRC = as1-centurion.c as6-centurion.c
-
-TARGET_DEF = -DTARGET_WARREX
-
-include Makefile.common

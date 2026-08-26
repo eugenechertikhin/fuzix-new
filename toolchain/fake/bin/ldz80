@@ -1,0 +1,23 @@
+#!/bin/sh
+# Fake ld8080 for the fuzix-new CMake build.
+#
+# Produces a >=32K raw image (all zero) plus a symbol map in the exact format
+# pack85 expects, so the real host-built pack85 stage can run. It does not
+# actually link the object files.
+out="fuzix.raw"; map="fuzix.tmpmap"; prev=""
+for a in "$@"; do
+    [ "$prev" = "-o" ] && out="$a"
+    [ "$prev" = "-m" ] && map="$a"
+    prev="$a"
+done
+dd if=/dev/zero of="$out" bs=1024 count=40 2>/dev/null
+cat > "$map" <<MAP
+8000 A __discard
+0100 A __discard_size
+7000 A __common
+0100 A __common_size
+0000 A __commondata
+0000 A __commondata_siz
+6000 A __bss
+0100 A __bss_size
+MAP

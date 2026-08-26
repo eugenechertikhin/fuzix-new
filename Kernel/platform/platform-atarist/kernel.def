@@ -1,2 +1,0 @@
-#define DI_MASK		$700		/* or bits for DI */
-#define EI_MASK		$300		/* or bits for EI : block hblank */

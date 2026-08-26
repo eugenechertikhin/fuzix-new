@@ -1,0 +1,6 @@
+# Disk images / temp files produced by the filesystem-src build scripts.
+# (The tool binaries themselves are built out-of-tree under build/tools/.)
+filesystem-src/fuzix.dsk
+filesystem-src/fuzixfs.dsk
+filesystem-src/ucp-tmp.txt
+filesystem-src/etc-files/issue

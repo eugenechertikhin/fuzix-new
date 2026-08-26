@@ -6,6 +6,7 @@
 #include <kernel.h>
 
 typedef uint16_t timer_t;
+typedef int16_t timecmp_t;
 
 #define set_timer_ms(msec) (set_timer_duration(msec < 100U ? 1 : ((msec) / 100U)))
 #define set_timer_sec(sec) (set_timer_duration((sec) * 10))

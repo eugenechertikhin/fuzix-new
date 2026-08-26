@@ -26,10 +26,6 @@ From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 #define NULL (void *)0
 #endif
 
-#ifndef regptr
-#define regptr
-#endif
-
 #define min(a,b) ( (a) < (b) ? (a) : (b) )
 #define max(a,b) ( (a) > (b) ? (a) : (b) )
 #define aligndown(v,a) (uint8_t*)((intptr_t)(v) & ~((a)-1))
@@ -301,7 +297,7 @@ typedef struct cinode {
     uint8_t    c_refs;          /* In-core reference count */
     uint8_t    c_readers;	/* Count of readers by oft entry */
     uint8_t    c_writers;	/* Count of writers by oft entry */
-    uint8_t    c_flags;           
+    uint8_t    c_flags;
 #define CDIRTY		0x80	/* Modified flag. */
 #define CRDONLY		0x40	/* On a read only file system */
 #define CFLOCK		0x0F	/* flock bits */
@@ -457,7 +453,7 @@ struct mount {
 #define A_FREEZE		4	/* Unimplemented, want for NC100? */
 #define A_SWAPCTL		16	/* Unimplemented */
 #define A_CONFIG		17	/* Unimplemented */
-#define A_FTRACE		18	/* Unimplemented: 
+#define A_FTRACE		18	/* Unimplemented:
                                           Hook to the syscall trace debug */
 #define A_SUSPEND               32	/* Suspend to RAM (optional) */
 
@@ -465,7 +461,7 @@ struct mount {
 
 #define A_SC_ADD		1
 
-                                          
+
 /* Process table entry */
 
 struct sigbits {
@@ -523,7 +519,7 @@ typedef struct p_tab {
     void *	p_profbuf;
     uaddr_t	p_profsize;
     uaddr_t	p_profoff;
-#endif    
+#endif
     /* Put new stuff we don't care about in asm or ps at the end */
     struct p_tab *p_timerq;
 } p_tab, *ptptr;
@@ -571,14 +567,14 @@ typedef struct u_data {
     bool        u_sysio;        /* True if I/O to system space */
 
     /* This block gets written to acct */
-    
+
     /* We overwrite u_mask with p->p_uid on the exit */
     uint16_t    u_mask;         /* umask: file creation mode mask */
     uint16_t    u_gid;
     uint16_t    u_euid;
     uint16_t    u_egid;
     char        u_name[8];      /* Name invoked with */
-    
+
     /* This section is not written out except as padding */
     uint8_t     u_files[UFTSIZE];       /* Process file table: indices into open file table, or NO_FILE. */
     uint16_t	u_cloexec;	/* Close on exec flags */
@@ -902,15 +898,15 @@ extern bool validdev(uint16_t dev);
 #define valaddr(a,b,c)	(b)
 #define valaddr_r(a,b)	(b)
 #define valaddr_w(a,b)	(b)
-#define uget(a,b,c)	(_uget(a, b, c) * 0)
-#define uput(a,b,c)	(_uput(a, b, c) * 0)
+#define uget(a,b,c)	_uget(a, b, c)
+#define uput(a,b,c)	_uput(a, b, c)
 #define ugetc(a)	_ugetc(a)
 #define ugetw(a)	_ugetw(a)
 #define ugetl(a)	_ugetl(a)
 #define uputc(v, p)	_uputc(v, p)
 #define uputw(v, p)	_uputw(v, p)
 #define uputl(v, p)	_uputl(v, p)
-#define uzero(a,b)	(_uzero(a, b) * 0)
+#define uzero(a,b)	_uzero(a, b)
 #else
 extern usize_t valaddr(const uint8_t *base, usize_t size, uint_fast8_t is_write);
 extern usize_t valaddr_r(const uint8_t *base, usize_t size);
@@ -936,9 +932,9 @@ extern int uzero(void *userspace_dest, usize_t count);
 #define _uputc(v, p) ((*(uint8_t*)(p) = (v)), 0)
 #define _uputw(v, p) ((*(uint16_t*)(p) = (v)), 0)
 #define _uputl(v, p) ((*(uint32_t*)(p) = (v)), 0)
-#define _uget(a,b,c) (memcpy(b,a,c) && 0)
-#define _uput(a,b,c) (memcpy(b,a,c) && 0)
-#define _uzero(a,b)  (memset(a,0,b) && 0)
+#define _uget(a,b,c) ((unsigned)memcpy(b,a,c) * 0)
+#define _uput(a,b,c) ((unsigned)memcpy(b,a,c) * 0)
+#define _uzero(a,b)  ((unsigned)memset(a,0,b) * 0)
 #else
 /* usermem.c or usermem_std.s */
 extern int16_t _ugetc(const uint8_t *user) __fastcall;
@@ -1118,6 +1114,8 @@ extern void swapper(ptptr p);
 extern void swapper2(ptptr p, uint16_t map);
 extern uint8_t get_common(void);
 extern void swap_finish(uint_fast8_t page, ptptr p);
+extern void swaptask(void);
+extern ptptr swapproc;
 /* These two are provided by the bank code selected for the port */
 extern int swapout(ptptr p);
 extern void swapin(ptptr p, uint16_t map);

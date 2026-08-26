@@ -1,4 +1,0 @@
-package  TCL
-if-file  picol
-
-f 0755 /usr/bin/picol  picol

@@ -1,2 +1,0 @@
-10 RUNM"BOOT.BIN" 'DW1
-

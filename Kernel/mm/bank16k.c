@@ -42,16 +42,16 @@
  */
 
 static unsigned char pfree[MAX_MAPS];
-static unsigned char pfptr = 0;
+static unsigned char *pfptr = pfree;
 
 /*
  *	Helper for platform to add pages at boot
  */
 void pagemap_add(uint8_t page)
 {
-	if (pfptr == MAX_MAPS)
+	if (pfptr == pfree + MAX_MAPS)
 		panic(PANIC_MAPOVER);
-	pfree[pfptr++] = page;
+	*pfptr++ = page;
 }
 
 /*
@@ -59,23 +59,23 @@ void pagemap_add(uint8_t page)
  */
 void pagemap_free(ptptr p)
 {
-	uint8_t *ptr = (uint8_t *) & p->p_page;
+	register uint8_t *ptr = (uint8_t *) & p->p_page;
 	uint8_t last = 0xff;
-	int i;
+	uint_fast8_t i;
 	for (i = 0; i < 4; i++) {
 		if (*ptr != last) {
-			pfree[pfptr++] = *ptr;
+			*pfptr++ = *ptr;
 			last = *ptr;
 		}
 		ptr++;
 	}
 }
 
-static int maps_needed(uint16_t top)
+int maps_needed(uint16_t top)
 {
 	/* On many platforms if you touch this or PROGTOP you must
 	   touch tricks.s */
-	uint16_t needed = top + 0xFFFF - PROGTOP;
+	register uint16_t needed = top + 0xFFFF - PROGTOP;
 	/* Usually we have 0x1000 common - 1 for shift and inc */
 	needed >>= 14;		/* in banks */
 	needed++;		/* rounded */
@@ -91,41 +91,37 @@ static int maps_needed(uint16_t top)
  */
 static int pagemap_alloc2(ptptr p, uint8_t c)
 {
-	uint8_t *ptr = (uint8_t *) & p->p_page;
+	register uint8_t *ptr = (uint8_t *) &p->p_page;
 	int needed = maps_needed(p->p_top);
-	int i;
+	register int i;
 
 	if (c)
 		needed--;
 #ifdef SWAPDEV
 	/* Throw our toys out of our pram until we have enough room */
-	while (needed > pfptr)
+	while (needed > pfptr - pfree)
 		if (swapneeded(p, 1) == NULL)
 			return ENOMEM;
 #else
-	if (needed > pfptr)	/* We have no swap so poof... */
+	if (needed > pfptr - pfree)	/* We have no swap so poof... */
 		return ENOMEM;
 #endif
 
 	/* Pages in the low then repeat the top one */
-	/* Work around gcc 6809 bug */
-	pfptr -= needed;
 	for (i = 0; i < needed; i++)
-		ptr[i] = pfree[pfptr + i];
-
+		*ptr++ = *--pfptr;
 	if (!c)
-		c = ptr[i - 1];
-	while (i < 4) {
-		ptr[i] = c;
-		i++;
-	}
+		c = ptr[-1];
+	while (i++ < 4)
+		*ptr++ = c;
 #ifdef DEBUG
 	kprintf("map %x%x\n", p->p_page, p->p_page2);
 #endif
 	return 0;
 }
 
-int pagemap_alloc( ptptr p ){
+int pagemap_alloc(ptptr p)
+{
 	return pagemap_alloc2(p, 0);
 }
 
@@ -140,7 +136,7 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
 {
 	int8_t have = maps_needed(udata.u_top);
 	int8_t want = maps_needed(size + MAPBASE);
-	uint8_t *ptr = (uint8_t *) & udata.u_page;
+	register uint8_t *ptr = (uint8_t *) & udata.u_page;
 	uint8_t i;
 	uint8_t update = 0;
 	irqflags_t irq;
@@ -158,14 +154,14 @@ retry:
 		/* If we are shrinking then free pages and propogate the
 		   common page into the freed spaces */
 		for (i = want; i < have; i++) {
-			pfree[pfptr++] = ptr[i - 1];
+			*pfptr++ = ptr[i - 1];
 			ptr[i - 1] = ptr[3];
 		}
 		/* We collapsed top and bottom, so we need to sort our vectors
 		   and common space out */
 		if (want == 1)
 			update = 1;
-	} else if (want - have <= pfptr) {
+	} else if (want - have <= pfptr - pfree) {
 		/* If we are adding then just insert the new pages, keeping the common
 		   unchanged at the top */
 		i = want - have;
@@ -173,7 +169,7 @@ retry:
 		/* This is written this slightly odd way to stop gcc 6809 miscompiling it */
 		pfptr -= i;
 		while(i--)
-			*ptr++ = pfree[pfptr + i];
+			*ptr++ = *--pfptr;
 		update = 1;
 	} else {
 #ifdef SWAPDEV
@@ -199,7 +195,7 @@ retry:
 	return 0;
 }
 
-int pagemap_prepare(struct exec *hdr)
+int pagemap_prepare(register struct exec *hdr)
 {
 	/* If it is relocatable load it at PROGLOAD */
 	if (hdr->a_base == 0)
@@ -215,9 +211,10 @@ int pagemap_prepare(struct exec *hdr)
 	return 0;
 }
 
+
 usize_t pagemap_mem_used(void)
 {
-	return procmem - (pfptr << 4);
+	return procmem - ((pfptr - pfree)<< 4);
 }
 
 #ifdef SWAPDEV
@@ -238,11 +235,11 @@ uint8_t get_common(void)
 	/* if current context is dead, then reuse it's common */
 	if (udata.u_ptab->p_status == P_ZOMBIE ||
 	    udata.u_ptab->p_status == P_EMPTY){
-		return pfree[--pfptr];
+		return *--pfptr;
 	}
 	/* otherwise get alloc a page and copy common to it */
-	if (pfptr){
-		int ret = pfree[--pfptr];
+	if (pfptr) {
+		int ret = *--pfptr;
 		copy_common(ret);
 		return ret;
 	}
@@ -257,7 +254,7 @@ uint8_t get_common(void)
    processes, after starting it with get_common()
 
 */
-void swap_finish(uint_fast8_t page, ptptr p)
+void swap_finish(uint_fast8_t page, register ptptr p)
 {
 	uint16_t map = p->p_page2;
 	pagemap_alloc2(p, page);
@@ -273,15 +270,15 @@ void swap_finish(uint_fast8_t page, ptptr p)
  *	FIXME: bank16k should only read/write out the banks that are in use
  */
 
-int swapout(ptptr p)
+int swapout(register ptptr p)
 {
 	uint16_t page = p->p_page;
 	uint16_t blk;
 	int16_t map;
 	uint16_t base = SWAPBASE;
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
-	uint16_t i;
-	uint8_t *pt = (uint8_t *) & p->p_page;
+	register uint16_t i;
+	register uint8_t *pt = (uint8_t *) & p->p_page;
 
 	if (!page)
 		panic(PANIC_ALREADYSWAP);
@@ -322,13 +319,13 @@ int swapout(ptptr p)
  *
  * FIXME: bank16k should only read/write out the banks that are in use
  */
-void swapin(ptptr p, uint16_t map)
+void swapin(register ptptr p, uint16_t map)
 {
 	uint16_t blk = map * SWAP_SIZE;
 	uint16_t base = SWAPBASE;
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
-	uint16_t i;
-	uint8_t *pt = (uint8_t *) & p->p_page;
+	register uint16_t i;
+	register uint8_t *pt = (uint8_t *) & p->p_page;
 
 #ifdef DEBUG
 	kprintf("Swapin %x, %d\n", p, p->p_page);

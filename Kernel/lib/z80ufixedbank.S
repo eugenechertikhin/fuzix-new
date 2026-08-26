@@ -1,5 +1,5 @@
 
-#include "../lib/z80ufixedbank-core.s"
+#include "z80ufixedbank-core.s"
 ;
 ;	This is related so we will keep it here. Copy the process memory
 ;	for a fork. a is the page base of the parent, c of the child

@@ -1,0 +1,50 @@
+#!/bin/sh
+# ---------------------------------------------------------------------------
+# userlib-syscalls.sh - generate + assemble the userland syscall stubs.
+#
+# The host tool tools/syscall_<usercpu> writes one tiny assembly stub per
+# syscall into fuzix<usercpu>/syscall_*.s (plus a Makefile we ignore). The
+# per-platform dispatcher (fuzix<usercpu>/syscall.s or syscall_<cpu>.s) is
+# checked in and copied alongside. We then assemble every .s into an object and
+# write the object list to @SYSCALL_LIST@ so the archive step can pick them up.
+#
+# Configured by cmake/UserLib.cmake (do not edit the generated copy).
+# ---------------------------------------------------------------------------
+set -e
+
+GEN="@SYSCALL_GEN@"
+CC="@USER_CC@"
+MACH="@USER_CC_MACHINE@"
+OPT="@USER_OPT@"
+KIND="@USER_KIND@"
+CPU="@USERCPU@"
+LIBS_DIR="@LIBS_DIR@"
+WORK="@SYSCALL_WORK@"
+OBJDIR="@SYSCALL_OBJ_DIR@"
+LIST="@SYSCALL_LIST@"
+
+rm -rf "$WORK/fuzix$CPU"
+mkdir -p "$WORK/fuzix$CPU" "$OBJDIR"
+
+# Bring in the checked-in dispatcher stub(s) that the generator does NOT emit.
+for d in "$LIBS_DIR/fuzix$CPU/"*.s; do
+    [ -e "$d" ] || continue
+    cp "$d" "$WORK/fuzix$CPU/"
+done
+
+# Generate the per-syscall stubs (the tool hard-codes the fuzix<cpu>/ path).
+( cd "$WORK" && "$GEN" )
+
+: > "$LIST"
+for s in "$WORK/fuzix$CPU/"*.s; do
+    [ -e "$s" ] || continue
+    base=$(basename "$s" .s)
+    obj="$OBJDIR/$base.o"
+    if [ "$KIND" = fcc ]; then
+        # fake/real fcc emit <basename>.o into the cwd, so compile from OBJDIR.
+        ( cd "$OBJDIR" && "$CC" -X $MACH -c "$s" )
+    else
+        "$CC" $OPT -c "$s" -o "$obj"
+    fi
+    echo "$obj" >> "$LIST"
+done

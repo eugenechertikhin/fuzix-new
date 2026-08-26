@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+#	Wrap the AR binutils. Not much is needed, just losing the -s stack
+#
+STACK=
+ARGS=""
+#
+#	Find the target and strip out the -o foo option
+#
+while [[ $# -gt 0 ]]
+do
+case "$1" in
+	-s)
+	STACK="$2"
+	# Not actually used
+	shift
+	shift
+	;;
+	*)
+	ARGS+=' '"$1"
+	shift
+	;;
+esac
+done
+
+arm-none-eabi-ld $ARGS

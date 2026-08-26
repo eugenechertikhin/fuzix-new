@@ -1,0 +1,5 @@
+#!/bin/sh
+# Fake ia16-elf-ld: honor -o <out>, produce a small ELF-ish blob.
+out="a.out"; prev=""
+for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+dd if=/dev/zero of="$out" bs=1024 count=2 2>/dev/null

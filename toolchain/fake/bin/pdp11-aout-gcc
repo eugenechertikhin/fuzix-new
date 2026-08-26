@@ -1,0 +1,6 @@
+#!/bin/sh
+# Fake pdp11-aout-gcc: honor -o <out>, touch it (no real compilation).
+out=""; prev=""
+for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+[ -z "$out" ] && { echo "fake gcc: no -o" >&2; exit 1; }
+: > "$out"

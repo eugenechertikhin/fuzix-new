@@ -39,6 +39,29 @@
 #include <page.h>
 #include <flat_small.h>
 
+#if (NPAGE > 126)
+typedef uint16_t	pgnum_t;
+#define P_LOCK		0x8000
+#define P_PAGE(x)	(((x)->page) & 0x7FFF)
+#define SWAPPED		0xFFF0		/* On disk */
+#define EMPTY		0xFFF8		/* No content */
+#define FREE		0xFFFF		/* Can be allocated */
+#define NO_PAGE		0xFFFF
+#define NO_SLOT		0xFFFF
+#define SLOT_ANY	0xFFFF
+#define INVALID_PAGE	0x7FFF	/* Not valid as with P_LOCK becomes NO_PAGE */
+#else
+typedef uint8_t		pgnum_t;
+#define P_LOCK		0x80
+#define P_PAGE(x)	(((x)->page) & 0x7F)
+#define SWAPPED		0xF0		/* On disk */
+#define EMPTY		0xF8		/* No content */
+#define FREE		0xFF		/* Can be allocated */
+#define NO_PAGE		0xFF
+#define NO_SLOT		0xFF
+#define SLOT_ANY	0xFF
+#define INVALID_PAGE	0x7F	/* Not valid as with P_LOCK becomes NO_PAGE */
+#endif
 
 #undef DEBUG
 
@@ -57,24 +80,18 @@ extern struct u_data *udata_shadow;
  */
 
 struct mem {
-	uint8_t page;
-#define P_LOCK	0x80
-#define P_PAGE(x)	(((x)->page) & 0x7F)
+	pgnum_t page;
 	uint8_t age;
 };
 
 struct meminfo {
-	uint8_t texttop;	/* Shared to this point */
-	uint8_t low;
-	uint8_t high;
+	unsigned texttop;	/* Shared to this point */
+	unsigned low;
+	unsigned high;
 	uaddr_t stackbot;
 	uaddr_t stacktop;
 };
 
-#define NO_PAGE		0xFF
-#define NO_SLOT		0xFF
-#define SLOT_ANY	0xFF
-#define INVALID_PAGE	0x7F	/* Not valid as with P_LOCK becomes NO_PAGE */
 
 /* The address of the start of the user memory region. Set by the platform
    during boot. Alignment is the platform's problem. We dont care */
@@ -92,28 +109,25 @@ static struct mem mem[NBANK];
 static struct meminfo meminfo[PTABSIZE];
 /* Memory map for each process - simple linear arrays as the address space
    is small */
-static uint8_t pagemap[PTABSIZE][NBANK];
+static pgnum_t pagemap[PTABSIZE][NBANK];
 
 /* Reverse mapping table. In theory we could combine this with the allocation
    map at some point and maybe save space at a small scanning cost. Also our
    free page table. This works with shared pages because the page will only
    ever be in one map location */
-static uint8_t rmap[NPAGE];
-static uint_fast8_t freepages;
-static uint8_t *freeptr = rmap;
+static pgnum_t rmap[NPAGE];
+static unsigned freepages;
+static pgnum_t *freeptr = rmap;
 
-#define SWAPPED	0xF0		/* On disk */
-#define EMPTY 0xF8		/* No content */
-#define FREE 0xFF		/* Can be allocated */
 
 #ifdef DEBUG
 
-static unsigned shared_page(uint8_t *pp, uint_fast8_t slot);
+static unsigned shared_page(pgnum_t *pp, unsigned slot);
 
 /* Dump the map state */
 static void dump_map(const char *p)
 {
-	uint8_t *mp;
+	pgnum_t *mp;
 	unsigned i;
 	kprintf("%s: map [ ", p);
 	mp = &pagemap[udata.u_page][0];
@@ -122,14 +136,14 @@ static void dump_map(const char *p)
 			kputchar('S');
 		else
 			kputchar('P');
-		kprintf("%2x ", *mp++);
+		kprintf("%x ", *mp++);
 	}
 	kprintf(" ]\n");
 	kprintf("phys map [ ");
 	for (i = 0; i < top_bank; i++) {
-		kprintf("%2x ", mem[i].page);
+		kprintf("%x ", mem[i].page);
 		if (mem[i].page != NO_PAGE && rmap[P_PAGE(mem + i)] != i)
-			kprintf("\nRMAP bad %2x\n",
+			kprintf("\nRMAP bad %x\n",
 				rmap[P_PAGE(mem + i)]);
 	}
 	kprintf(" ]\n");
@@ -138,8 +152,14 @@ static void dump_map(const char *p)
 #define dump_map(x)	do {} while(0);
 #endif
 
+static void set_range(pgnum_t *p, pgnum_t val, unsigned n)
+{
+	while(n--)
+		*p++ = val;
+}
+
 /* Page allocation. We don't deal with shared pages yet */
-static uint_fast8_t alloc_page(void)
+static pgnum_t alloc_page(void)
 {
 	sysinfo.swapusedk += PAGE_SIZE >> 10;
 	if (freepages == 0)
@@ -161,11 +181,11 @@ static uint_fast8_t alloc_page(void)
  *	mmap() to worry about. This means that the page can only
  *	exist in the same slot in the other maps.
  */
-static unsigned shared_page(uint8_t *pp, uint_fast8_t slot)
+static unsigned shared_page(pgnum_t *pp, unsigned slot)
 {
-	uint8_t *p = &pagemap[0][slot];
-	uint8_t *e = p + sizeof(pagemap);
-	uint8_t page = *pp;
+	pgnum_t *p = &pagemap[0][slot];
+	pgnum_t *e = p + sizeof(pagemap);
+	pgnum_t page = *pp;
 
 	while(p < e) {
 		if (*p == page && p != pp)
@@ -177,7 +197,7 @@ static unsigned shared_page(uint8_t *pp, uint_fast8_t slot)
 
 /* Reuse a page unless it is shared, in which case we allocate ourselves
    a new one */
-static void unshare_page(uint_fast8_t *pp, uint_fast8_t slot)
+static void unshare_page(pgnum_t *pp, unsigned slot)
 {
 	if (shared_page(pp, slot))
 		*pp = alloc_page();
@@ -186,7 +206,7 @@ static void unshare_page(uint_fast8_t *pp, uint_fast8_t slot)
 /* We only ever free pages that are mapped in. It
    would be easy enough to handle slot 0xFF as a flag
    otherwise but it's not needed */
-static void free_page(uint_fast8_t *pp, uint_fast8_t slot, unsigned unshared)
+static void free_page(pgnum_t *pp, unsigned slot, unsigned unshared)
 {
 	/* Handling shared pages would require making this
 	   smarter */
@@ -203,6 +223,7 @@ static void free_page(uint_fast8_t *pp, uint_fast8_t slot, unsigned unshared)
 		panic("pgfree");
 	if (rmap[*pp] != slot)
 		panic("pgfree2");
+/*	mem[slot].page &= ~P_LOCK; */
 	mp->page = NO_PAGE;
 	rmap[*pp] = FREE;
 	*pp = NO_PAGE;
@@ -223,7 +244,7 @@ static void swap_in_page(uint_fast8_t slot, unsigned page)
 		PAGE_SIZE, PAGE_ADDR(slot), 0);
 }
 
-static void swap_out_page(uint_fast8_t slot, unsigned page)
+static void swap_out_page(unsigned slot, unsigned page)
 {
 	/* Assumes a flat map */
 	pagewrite(PAGEDEV, page << (PAGE_SHIFT - BLKSHIFT),
@@ -237,13 +258,13 @@ static void swap_out_page(uint_fast8_t slot, unsigned page)
  *	and if not who to swap to disk. We don't however actually
  *	make any changes to anything
  */
-static uint_fast8_t is_present(uint_fast8_t page, uint_fast8_t slot)
+static pgnum_t is_present(pgnum_t page, unsigned slot)
 {
 	struct mem *m = mem;
 	struct mem *oldest = mem;
-	uint_fast8_t oldn = NO_SLOT;
-	uint_fast8_t freep = NO_SLOT;
-	uint_fast8_t i;
+	pgnum_t oldn = NO_SLOT;
+	pgnum_t freep = NO_SLOT;
+	unsigned i;
 
 	if (rmap[page] < SWAPPED)
 		return rmap[page];
@@ -271,7 +292,7 @@ static uint_fast8_t is_present(uint_fast8_t page, uint_fast8_t slot)
  *	Do in software what a real MMU does in hardware. Swap
  *	pages and move pages around memory/
  */
-static void exchange_pages(uint_fast8_t p1, uint_fast8_t p2)
+static void exchange_pages(pgnum_t p1, pgnum_t p2)
 {
 	struct mem *m1 = mem + p1;
 	struct mem *m2 = mem + p2;
@@ -294,7 +315,7 @@ static void exchange_pages(uint_fast8_t p1, uint_fast8_t p2)
 	rmap[P_PAGE(m2)] = p2;
 }
 
-static void move_page(uint_fast8_t to, uint_fast8_t from)
+static void move_page(pgnum_t to, pgnum_t from)
 {
 	struct mem *m1 = mem + to;
 	struct mem *m2 = mem + from;
@@ -318,7 +339,7 @@ static void move_page(uint_fast8_t to, uint_fast8_t from)
  *	Do the hard work of making a page present. We may be required
  *	to swap it in or maybe not.
  */
-static uint_fast8_t make_present(uint_fast8_t page, uint_fast8_t s, unsigned swap)
+static pgnum_t make_present(pgnum_t page, pgnum_t s, unsigned swap)
 {
 	unsigned n = is_present(page, s);
 	struct mem *m = mem + n;
@@ -396,13 +417,13 @@ static void age_pages(void)
 }
 
 /*
- *	Make the physical map algin with our page map
+ *	Make the physical map align with our page map
  */
 static void map_pages(ptptr p, unsigned pagein)
 {
-	uint8_t *mp = &pagemap[p->p_page][0];
+	pgnum_t *mp = &pagemap[p->p_page][0];
 	struct mem *m = mem;
-	uint_fast8_t i;
+	unsigned i;
 
 	age_pages();
 
@@ -420,6 +441,8 @@ static void map_pages(ptptr p, unsigned pagein)
 	for (i = 0; i < top_bank; i++) {
 		if (*mp != NO_PAGE)
 			make_present(*mp, i, pagein);
+		else if (mem[i].page != NO_PAGE)
+			mem[i].page &= ~P_LOCK;
 		mp++;
 	}
 	m = mem;
@@ -441,7 +464,7 @@ static void map_pages(ptptr p, unsigned pagein)
 static void unlock_pages(void)
 {
 	struct mem *m = mem;
-	uint_fast8_t i;
+	unsigned i;
 
 	for (i = 0; i < top_bank; i++) {
 		if (m->page != NO_PAGE)
@@ -459,13 +482,13 @@ static void unlock_pages(void)
  *	Our caller has all our pages in use pinned and present so
  *	we can safely remap without asking for swapin
  */
-void realloc_map(uint8_t low, uint8_t high, uint8_t oldshared)
+void realloc_map(unsigned low, unsigned high, unsigned oldshared)
 {
 	/* Maybe check pages needed to add versus total swap
 	   for oom case */
 	/* Then sweep */
-	uint8_t *mp = &pagemap[udata.u_page][0];
-	uint_fast8_t i;
+	pgnum_t *mp = &pagemap[udata.u_page][0];
+	unsigned i;
 
 #ifdef DEBUG
 	kprintf("realloc map %d %d (top %d)\n", low, high, top_bank);
@@ -511,11 +534,11 @@ void realloc_map(uint8_t low, uint8_t high, uint8_t oldshared)
  *	no usable pages and simply swap the existing page out to the swap
  *	entry of the new page.
  */
-void copy_map(uint_fast8_t from, uint_fast8_t to)
+void copy_map(pgnum_t from, pgnum_t to)
 {
-	uint8_t op;
-	uint_fast8_t slot;
-	uint_fast8_t n;
+	pgnum_t op;
+	pgnum_t slot;
+	pgnum_t n;
 
 #ifdef DEBUG
 	kprintf("copy map from %d to %d\n", from, to);
@@ -542,9 +565,9 @@ void copy_map(uint_fast8_t from, uint_fast8_t to)
  */
 static uint_fast8_t map_copy(ptptr p, ptptr c)
 {
-	uint_fast8_t i;
-	uint8_t *pp = &pagemap[p->p_page][0];
-	uint8_t *cp = &pagemap[c->p_page][0];
+	unsigned i;
+	pgnum_t *pp = &pagemap[p->p_page][0];
+	pgnum_t *cp = &pagemap[c->p_page][0];
 	struct meminfo *mi = meminfo + p->p_page;
 
 	if (top_bank - mi->high + mi->low - mi->texttop > freepages)
@@ -583,12 +606,12 @@ static uint_fast8_t map_copy(ptptr p, ptptr c)
 int pagemap_alloc(ptptr p)
 {
 	struct meminfo *mi, *pmi;
-	uint8_t *pt;
+	pgnum_t *pt;
+	int r;
+	pgnum_t pg;
+	pgnum_t *up = &pagemap[udata.u_ptab->p_page][0];
 
 	p->p_page = p - ptab;
-
-	if (plt_udata_set(p))
-		return ENOMEM;
 
 	mi = meminfo + p->p_page;
 
@@ -596,27 +619,42 @@ int pagemap_alloc(ptptr p)
 	 *	Create init. This happens early and is a bit special
 	 */
 	if (p->p_pid == 1) {
-#ifdef udata
-		udata_shadow = p->p_udata;
-#endif
 		/* Manufacturing init */
 		pt = &pagemap[p->p_page][0];
 		mi->low = 0;
 		mi->texttop = 0;
 		mi->high = top_bank;
-		memset(pt, NO_PAGE, NBANK);
+		set_range(pt, NO_PAGE, NBANK);
 		/* This is hairy as we don't have any swap backing set
-		   up so we fake it on the basis we'll have at least one
-		   page */
+		   up so we fake it on the basis we'll have at least two
+		   pages */
 		pt[0] = 0;
+		pt[top_bank - 1] = 1;
 		udata.u_codebase = page_base;
 		udata.u_break = page_base + PAGE_SIZE;
+		/* Top of our live space is our udata */
+		p->p_udata = (struct u_data *)(PAGE_ADDR(top_bank) - sizeof(struct u_block));
 		return 0;
 	}
 	/* Forking a copy */
 	pmi = meminfo + udata.u_page;
 	memcpy(mi, pmi, sizeof(*mi));
-	return map_copy(udata.u_ptab, p);
+	r =  map_copy(udata.u_ptab, p);
+	if (r < 0)
+		return r;
+	pg = pagemap[p->p_page][top_bank - 1];
+	/* Some gymnastics are needed so that we can use all the pages and
+	   also temporarily map the udata */
+	/* Unlock our page 0 to ensure there is room */
+	*up &= ~P_LOCK;
+	/* Map in the temporary udata */
+	pg = make_present(pg, SLOT_ANY, 0);
+	pagemap[udata.u_ptab->p_page][pg] |= P_LOCK;
+	p->p_udata = (struct u_data *)(PAGE_ADDR(pg) + PAGE_SIZE - sizeof(struct u_block));
+	/* When we have done the udata work dofork will call pagemap_switch
+	   to sort the results out and put back the correct page 0 and fix
+	   any locks */
+	return 0;
 }
 
 /* Switch the map to p. Death case is unimportant
@@ -630,19 +668,23 @@ void pagemap_switch(ptptr p, int death)
 	unlock_pages();
 	map_pages(p, 1);
 	dump_map("post switch");
+	/* Our udata is now live so in the standard spot */
+	p->p_udata = (struct u_data *)(PAGE_ADDR(top_bank) - sizeof(struct u_block));
 }
 
 /* Called on exit */
 void pagemap_free(ptptr p)
 {
 	/* Actually always called with p as the current process */
-	uint8_t *mp = &pagemap[udata.u_page][0];
-	uint8_t ttop = meminfo[p->p_page].texttop;
-	uint_fast8_t i;
+	pgnum_t *mp = &pagemap[udata.u_page][0];
+	unsigned ttop = meminfo[p->p_page].texttop;
+	unsigned i;
 
 	for (i = 0; i < top_bank; i++) {
-		if (*mp != NO_PAGE)
+		if (*mp != NO_PAGE) {
 			free_page(mp, i, i >= ttop);
+			*mp = NO_PAGE;
+		}
 		mp++;
 	}
 }
@@ -659,7 +701,8 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
 
 	/* Get sizes in bytes */
 	nl = hdr->a_text + hdr->a_data + hdr->a_bss;
-	nh = hdr->stacksize;
+	/* Udata sits at the top */
+	nh = hdr->stacksize + sizeof(struct u_block);
 
 	/* Turn them into inclusive pages to cover all the memory */
 	nl += PAGE_SIZE - 1;
@@ -667,7 +710,7 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
 	nh += PAGE_SIZE - 1;
 	nh >>= PAGE_SHIFT;
 
-	if (nl + nh + m->texttop - has > freepages) {
+	if (nl + nh + m->texttop > freepages + has) {
 		/* This is slightly pessimistic. In the case this fails
 		   we ought to count our shared pages the hard way to make
 		   sure TODO */
@@ -694,9 +737,22 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
 	
 	/* Tell the execve() code to build the stack in the top of
 	   our memory space we allocated */
-	udata.u_top = PAGE_ADDR(top_bank);
+	udata.u_top = PAGE_ADDR(top_bank) - sizeof(struct u_block);
+	udata.u_ptab->p_udata = (struct u_data *)udata.u_top;
+	udata_shadow = udata.u_ptab->p_udata;
 
 	return 0;
+}
+
+/* Turn the stack pointer relative to current working udata into one
+   versus top page udata where it wil be used */
+
+unsigned remap_sp(unsigned sp)
+{
+	sp -= PAGE_ADDR(0);		/* Turn into an offset */
+	sp &= (PAGE_SIZE - 1);		/* Low bits */
+	sp += PAGE_ADDR(top_bank - 1);	/* Page we will appear at */
+	return sp;
 }
 
 /*
@@ -704,7 +760,7 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
  */
 usize_t pagemap_mem_used(void)
 {
-	uint_fast8_t i, ct = 0;
+	unsigned i, ct = 0;
 	struct mem *m = mem;
 	for (i = 0; i < top_bank; i++) {
 		if (m->page != NO_PAGE)
@@ -757,9 +813,16 @@ usize_t valaddr_w(const uint8_t *pp, usize_t l)
  *	Called by the disk management layers when they find
  *	our page file.
  */
-void pagefile_add_blocks(unsigned blocks)
+void pagefile_add_blocks(unsigned long blocks)
 {
-	unsigned size = blocks >> (PAGE_SHIFT - BLKSHIFT);
+	unsigned size;
+
+	/* Work in integer types as we'll never care about such a
+	   huge partition in full */
+	if (blocks > 65535)
+		blocks = 65535;
+
+	size = blocks >> (PAGE_SHIFT - BLKSHIFT);
 
 	if (size > NPAGE)
 		size = NPAGE;
@@ -767,8 +830,8 @@ void pagefile_add_blocks(unsigned blocks)
 	sysinfo.swapk = size << (PAGE_SHIFT - 10);
 
 	/* Fill the allocation stack */
-	freepages = size - 1 ;
-	memset(rmap + 1, FREE, freepages);
+	freepages = size - 2 ;
+	set_range(rmap + 2, FREE, freepages);
 }
 
 /*
@@ -793,8 +856,14 @@ void pagemap_setup(uaddr_t base, unsigned len)
 		mem[i].page = NO_PAGE;
 	/* Magic for init setup */
 	rmap[0] = 0;
+	rmap[1] = top_bank - 1;
+#ifdef udata
+	/* Set up the udata pointer ready */
+	udata_ptr = (struct u_data *)(PAGE_ADDR(top_bank) - sizeof(struct u_block));
+	udata_shadow = udata_ptr;
+#endif	
 	/* Mark rest of the map used */
-	memset(rmap + 1, SWAPPED, NPAGE - 1);
+	set_range(rmap + 2, SWAPPED, NPAGE - 2);
 	/* The one page already in use */
 	sysinfo.swapusedk = PAGE_SIZE >> 10;
 }
@@ -806,20 +875,22 @@ void pagemap_setup(uaddr_t base, unsigned len)
 arg_t brk_extend(uaddr_t addr)
 {
 	struct meminfo *mi = meminfo + udata.u_page;
-	uint8_t *m = &pagemap[udata.u_page][0];
-	uint_fast8_t nl;
+	pgnum_t *m = &pagemap[udata.u_page][0];
+	unsigned nl;
 	int i;
 
-	/* Cannot'brk into code */
+	/* Cannot brk into code */
 	if (addr < udata.u_database)
 		return EINVAL;
+
 	if (addr >= mi->stackbot - 512)
 		return ENOMEM;
 
 	/* Fill in the extra pages */
 	nl = (addr - page_base + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
-	if (nl == mi->low)
+	/* TODO: is it worth returning pages to free space here ? */
+	if (nl <= mi->low)
 		return 0;
 
 	if (nl - mi->low > freepages)
@@ -844,8 +915,8 @@ arg_t brk_extend(uaddr_t addr)
 arg_t stack_extend(uaddr_t sp)
 {
 	struct meminfo *mi = meminfo + udata.u_page;
-	uint8_t *m = &pagemap[udata.u_page][0];
-	uint_fast8_t nh;
+	pgnum_t *m = &pagemap[udata.u_page][0];
+	unsigned nh;
 	unsigned i;
 
 	if (sp >= mi->stackbot)

@@ -1,6 +1,0 @@
-APPOTHER = cpuinfo
-include Makefile.common
-
-cpuinfo: cpuinfo.o cpuinfo-6303.o
-	$(LINKER) $(LINKER_OPT) -o $@ $(CRT0) $^ $(LINKER_TAIL) 
-

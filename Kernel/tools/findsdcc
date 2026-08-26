@@ -1,2 +1,0 @@
-#!/bin/sh
-echo $(command -v sdcc | sed -e "s/bin\/sdcc//")share/sdcc/lib/$1

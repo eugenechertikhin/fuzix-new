@@ -1,25 +1,8 @@
-# SDCC stuff
-*.lnk
-*.lst
-*.map
-*.mem
-*.rel
-*.rst
-*.sym
+build
+build-*
 *.o
-*.o.d
-cscope.*
-/GPATH
-/GRTAGS
-/GTAGS
-# Library archives
-*.a
-# Emacs backup
-*~
-# Statistics from builds
-size.report
-# Build system output
-.obj
-*.elf
-bin
-*.debug
+*.bak
+*.map
+*.tmpmap
+fuzix.raw
+fuzix.bin

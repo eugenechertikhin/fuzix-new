@@ -1,3 +1,0 @@
-CPUNAME = ez80_z80
-
-	include Makefile.z80

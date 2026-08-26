@@ -1,0 +1,127 @@
+# Self-contained skeleton root filesystem for the kernel-only fuzix-new tree.
+# Unlike basefs it references no userland binaries (no /init) and no libc
+# liberror.txt, so it builds with just the kernel tree + host tools:
+#   cmake ... -DFUZIX_ROOTFS=ON -DFUZIX_ROOTFS_PKG=skel
+# It provides the standard /dev nodes and an /etc skeleton only.
+package skel
+
+disable-pkg ALL skel
+
+d 0755 /
+d 0755 /bin
+d 0755 /dev
+d 0755 /etc
+d 0755 /mnt
+d 01777 /tmp
+d 0755 /usr
+d 0755 /var
+d 0700 /root
+d 0755 /usr/lib
+d 0755 /usr/bin
+d 0755 /var/run
+
+n 20666 512 /dev/tty   
+n 20660 513 /dev/tty1  
+n 20660 514 /dev/tty2  
+n 20660 515 /dev/tty3  
+n 20660 516 /dev/tty4  
+n 20660 517 /dev/tty5  
+n 20660 518 /dev/tty6  
+n 20660 519 /dev/tty7  
+n 20660 520 /dev/tty8  
+n 60660 0 /dev/hda   
+n 60660 1 /dev/hda1  
+n 60660 2 /dev/hda2  
+n 60660 3 /dev/hda3  
+n 60660 4 /dev/hda4  
+n 60660 5 /dev/hda5  
+n 60660 6 /dev/hda6  
+n 60660 7 /dev/hda7  
+n 60660 8 /dev/hda8  
+n 60660 9 /dev/hda9  
+n 60660 10 /dev/hda10 
+n 60660 11 /dev/hda11 
+n 60660 12 /dev/hda12 
+n 60660 13 /dev/hda13 
+n 60660 14 /dev/hda14 
+n 60660 15 /dev/hda15 
+n 60660 16 /dev/hdb   
+n 60660 17 /dev/hdb1  
+n 60660 18 /dev/hdb2  
+n 60660 19 /dev/hdb3  
+n 60660 20 /dev/hdb4  
+n 60660 21 /dev/hdb5  
+n 60660 22 /dev/hdb6  
+n 60660 23 /dev/hdb7  
+n 60660 24 /dev/hdb8  
+n 60660 25 /dev/hdb9  
+n 60660 26 /dev/hdb10 
+n 60660 27 /dev/hdb11 
+n 60660 28 /dev/hdb12 
+n 60660 29 /dev/hdb13 
+n 60660 30 /dev/hdb14 
+n 60660 31 /dev/hdb15 
+n 60660 32 /dev/hdc   
+n 60660 33 /dev/hdc1  
+n 60660 34 /dev/hdc2  
+n 60660 35 /dev/hdc3  
+n 60660 36 /dev/hdc4  
+n 60660 37 /dev/hdc5  
+n 60660 38 /dev/hdc6  
+n 60660 39 /dev/hdc7  
+n 60660 40 /dev/hdc8  
+n 60660 41 /dev/hdc9  
+n 60660 42 /dev/hdc10 
+n 60660 43 /dev/hdc11 
+n 60660 44 /dev/hdc12 
+n 60660 45 /dev/hdc13 
+n 60660 46 /dev/hdc14 
+n 60660 47 /dev/hdc15 
+n 60660 48 /dev/hdd   
+n 60660 49 /dev/hdd1  
+n 60660 50 /dev/hdd2  
+n 60660 51 /dev/hdd3  
+n 60660 52 /dev/hdd4  
+n 60660 53 /dev/hdd5  
+n 60660 54 /dev/hdd6  
+n 60660 55 /dev/hdd7  
+n 60660 56 /dev/hdd8  
+n 60660 57 /dev/hdd9  
+n 60660 58 /dev/hdd10 
+n 60660 59 /dev/hdd11 
+n 60660 60 /dev/hdd12 
+n 60660 61 /dev/hdd13 
+n 60660 62 /dev/hdd14 
+n 60660 63 /dev/hdd15 
+n 60660 256 /dev/fd0   
+n 60660 257 /dev/fd1   
+n 60660 258 /dev/fd2   
+n 60660 259 /dev/fd3   
+n 20660 768 /dev/lp0
+n 20660 769 /dev/lp1
+n 20666 1024 /dev/null  
+n 20660 1025 /dev/kmem
+n 20444 1026 /dev/zero  
+n 20666 1027 /dev/proc  
+n 20660 1028 /dev/mem
+n 20600 1029 /dev/rtc
+n 20644 1030 /dev/sys
+n 20600 1031 /dev/i2c
+n 20600 1032 /dev/gpio
+n 20600 1090 /dev/input
+n 60660 2048 /dev/rd0
+n 60661 2049 /dev/rd1
+n 60662 2050 /dev/rd2
+n 60663 2051 /dev/rd3
+
+f 0644 /etc/group     etc-files/group
+f 0644 /etc/passwd    etc-files/passwd
+f 0644 /etc/issue     etc-files/issue
+f 0644 /etc/motd      etc-files/motd
+f 0644 /etc/inittab   etc-files/inittab
+f 0644 /etc/termcap   etc-files/termcap
+f 0644 /etc/fstab     etc-files/fstab
+f 0644 /etc/mtab      etc-files/mtab
+f 0755 /etc/rc        etc-files/rc
+f 0755 /etc/rc.halt   etc-files/rc.halt
+f 0755 /etc/rc.reboot etc-files/rc.reboot

@@ -1,2 +1,0 @@
-export CPU = esp32
-
