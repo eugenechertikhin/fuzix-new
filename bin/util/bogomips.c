@@ -6,8 +6,7 @@
 #if defined(__m6809__) && defined(__GNUC__)
 
 __attribute__((naked))
-void delay(unsigned long r)
-{
+void delay(unsigned long r) {
     asm(
 	" ldd 4,s     \n"
 	" ldx 2,s     \n"
@@ -21,8 +20,7 @@ void delay(unsigned long r)
 	);
 }
 #elif defined(__SDCC_z80) || defined(__SDCC_z180) || defined(__SDCC_r2k) || defined(__SDCC_ez80_z80)
-void delay(unsigned long r)
-{
+void delay(unsigned long r) {
 __asm
     pop hl	; return address
     pop de	; low
@@ -45,8 +43,7 @@ __endasm;
 #elif defined(mc68hc11)
 
 __attribute__((naked))
-void delay(unsigned long r)
-{
+void delay(unsigned long r) {
     asm(
         " tsx\n"
         " ldd 2,x\n"
@@ -61,11 +58,21 @@ void delay(unsigned long r)
     );
 }
 #else
-#error "Unsupported platform"
+
+/*
+ *	Portable fallback for targets without a hand written delay loop (e.g.
+ *	the Intel 8080/8085 and other Fuzix Compiler Kit backends, which have
+ *	no inline assembler). The counter is volatile so the empty loop body
+ *	is not optimised away.
+ */
+void delay(unsigned long r) {
+    volatile unsigned long i;
+    for (i = r; i; i--)
+	;
+}
 #endif
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     unsigned long loops_per_sec = 1 ;
     clock_t ticks;
     unsigned int cps = sysconf(_SC_CLK_TCK);

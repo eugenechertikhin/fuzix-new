@@ -294,6 +294,13 @@ include(UserLib)
 # crt0 + libc<usercpu>.a. Depends on the `lib` target.
 include(UserBin)
 
+# The root filesystem pulls build artifacts (liberror.txt, /init) from the
+# userland lib/bin output dirs, so those targets must be built first. The `lib`
+# and `bin` targets only exist after UserBin/UserLib, hence wiring it here.
+if(TARGET rootfs)
+    add_dependencies(rootfs lib bin)
+endif()
+
 set(FUZIX_EXTRA_DEPENDS "${GEN}/include/sysinfoblk.h")
 
 # ---------------------------------------------------------------------------

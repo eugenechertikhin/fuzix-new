@@ -22,7 +22,9 @@ SKIP='@DISK_SKIP@'
 mkdir -p "$IMGDIR" "$WORK"
 
 # 1. Assemble + link the boot sector (assembler is CPU-specific).
-( cd "$WORK" && @CPU_BOOTBLOCK_ASSEMBLE@ && "$LD" -b bootblock.o -o bootblock.bin )
+# Options must precede operands: a BSD/macOS getopt() stops scanning at the
+# first non-option, so "-o bootblock.bin" has to come before bootblock.o.
+( cd "$WORK" && @CPU_BOOTBLOCK_ASSEMBLE@ && "$LD" -b -o bootblock.bin bootblock.o )
 
 # 2. Boot floppy: boot sector padded to a full 256256-byte disk, kernel at
 #    track 58 (byte offset 193024).

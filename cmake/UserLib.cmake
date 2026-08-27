@@ -45,10 +45,17 @@ separate_arguments(USER_OPT UNIX_COMMAND "${USER_OPT}")
 
 set(USER_CC "${FUZIX_CC}")                       # same driver as the kernel build
 
-# Archiver: host `ar` works on fcc objects; gcc targets need their cross ar.
+# Archiver: gcc targets need their cross ar. For the fcc targets a GNU-style
+# host `ar` works on the custom-format objects, but Apple's /usr/bin/ar refuses
+# to archive anything that is not a Mach-O object (it silently drops the members
+# and leaves an empty library), so on macOS fall back to the bundled portable
+# GNU-format archiver. Override with -DUSER_AR=... for a real GNU ar.
 if(USER_KIND STREQUAL "gcc")
     string(REPLACE "gcc" "ar" _derived_ar "${FUZIX_CC}")
     set(USER_AR "${_derived_ar}" CACHE FILEPATH "Userland archiver")
+elseif(CMAKE_HOST_APPLE)
+    set(USER_AR "${CMAKE_SOURCE_DIR}/cmake/portable-ar.py"
+        CACHE FILEPATH "Userland archiver")
 else()
     set(USER_AR "ar" CACHE FILEPATH "Userland archiver")
 endif()
@@ -160,6 +167,8 @@ add_custom_command(
 
 # 4b. archive libc<usercpu>.a from static objects + syscall objects.
 set(LIBC_A "${USER_LIB_DIR}/libc${USERCPU}.a")
+# Directory holding the cross tools (lorder<cpu>/nm<cpu>) for member ordering.
+get_filename_component(TOOLBIN "${USER_CC}" DIRECTORY)
 configure_file("${CMAKE_SOURCE_DIR}/cmake/userlib-archive.sh.in"
                "${CMAKE_BINARY_DIR}/userlib-archive.sh" @ONLY)
 add_custom_command(

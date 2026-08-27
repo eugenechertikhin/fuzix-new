@@ -45,14 +45,19 @@ set(CRT0_NOSTDIO "${USER_LIB_DIR}/crt0nostdio_${USERCPU}.o")
 # 1. Program registry
 # ---------------------------------------------------------------------------
 # fuzix_program(NAME <n> PACKAGE <pkg> CRT0 <stdio|nostdio>
+#               [BIN <binname>]           (installed binary name; default: NAME)
 #               [DIR <subdir>]            (default: util)
 #               [SOURCES <a.c> ...]       (default: <n>.c)
 #               [LIBS <name> ...]         (extra -l<name><usercpu>, e.g. termcap)
+#               [DEFINES <MACRO> ...]     (extra -D<MACRO> at compile, e.g. BUILD_FSH)
 #               [CPUS <usercpu> ...])     (empty = all CPUs)
+# NAME is the unique registry id; BIN is the produced binary. Two programs may
+# share a BIN (e.g. util's `ed` and V7's `ed`) - the selection pass keeps the
+# first enabled one and shadows the rest, so both can coexist in the registry.
 # Records metadata only; nothing is built until the selection pass below.
 set_property(GLOBAL PROPERTY FUZIX_PROGRAMS "")
 function(fuzix_program)
-    cmake_parse_arguments(P "" "NAME;PACKAGE;CRT0;DIR" "SOURCES;LIBS;CPUS" ${ARGN})
+    cmake_parse_arguments(P "" "NAME;PACKAGE;CRT0;DIR;BIN" "SOURCES;LIBS;CPUS;DEFINES" ${ARGN})
     # NOTE: use DEFINED, not truthiness - program names like `false`/`true`
     # would read as boolean values in a plain if().
     if(NOT DEFINED P_NAME OR NOT DEFINED P_PACKAGE OR NOT DEFINED P_CRT0)
@@ -64,13 +69,18 @@ function(fuzix_program)
     if(NOT DEFINED P_SOURCES)
         set(P_SOURCES "${P_NAME}.c")
     endif()
+    if(NOT DEFINED P_BIN)
+        set(P_BIN "${P_NAME}")
+    endif()
     set_property(GLOBAL APPEND PROPERTY FUZIX_PROGRAMS "${P_NAME}")
+    set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_BIN     "${P_BIN}")
     set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_PACKAGE "${P_PACKAGE}")
     set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_CRT0    "${P_CRT0}")
     set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_DIR     "${P_DIR}")
     set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_SOURCES "${P_SOURCES}")
     set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_LIBS    "${P_LIBS}")
     set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_CPUS    "${P_CPUS}")
+    set_property(GLOBAL PROPERTY FUZIX_PROG_${P_NAME}_DEFINES "${P_DEFINES}")
 endfunction()
 
 # Map a package name to its FUZIX_PKG_* option variable (UPPER, '-' -> '_').
@@ -109,23 +119,37 @@ foreach(pkg ${_packages})
     option(${_ov} "Build the '${pkg}' program package" ${_def})
 endforeach()
 
-set(FUZIX_BINARIES_EXTRA   "" CACHE STRING "Extra programs to force-enable (;-list of names)")
+# A root filesystem needs /init, which lives in the (default-off) coreutils-extra
+# package; force it on so `make bin` produces it for the rootfs image.
+if(FUZIX_ROOTFS)
+    set(_binaries_extra_default "init")
+else()
+    set(_binaries_extra_default "")
+endif()
+set(FUZIX_BINARIES_EXTRA   "${_binaries_extra_default}" CACHE STRING "Extra programs to force-enable (;-list of names)")
 set(FUZIX_BINARIES_EXCLUDE "" CACHE STRING "Programs to force-disable (;-list of names)")
 
 # ---------------------------------------------------------------------------
 # 3. Build helpers
 # ---------------------------------------------------------------------------
-# Compile one app source (fcc emits <base>.o into an MD5-keyed cwd).
-function(_userbin_compile outvar abs_src incdir)
+# Compile one app source (fcc emits <base>.o into an MD5-keyed cwd). The key
+# includes the owning program name so that a source shared by several programs
+# (e.g. ue.c in ue / ue.fuzix / ue.ansi) gets a distinct object per program
+# instead of colliding on one OUTPUT.
+function(_userbin_compile outvar prog abs_src incdir defines)
     get_filename_component(_base "${abs_src}" NAME_WE)
-    string(MD5 _h "${abs_src}")
+    string(MD5 _h "${prog}:${abs_src}")
     set(_wd "${CMAKE_BINARY_DIR}/userland/binobj/${_h}")
     file(MAKE_DIRECTORY "${_wd}")
     set(_obj "${_wd}/${_base}.o")
+    set(_dflags "")
+    foreach(d ${defines})
+        list(APPEND _dflags "-D${d}")
+    endforeach()
     add_custom_command(
         OUTPUT  "${_obj}"
         COMMAND "${USER_CC}" -X ${USER_CC_MACHINE} -c ${USER_OPT} -D__STDC__
-                ${USER_INCLUDE_FLAGS} "-I${incdir}" "${abs_src}"
+                ${_dflags} ${USER_INCLUDE_FLAGS} "-I${incdir}" "${abs_src}"
         WORKING_DIRECTORY "${_wd}"
         DEPENDS "${abs_src}" "${LIBC_A}"
         COMMENT "fcc ${USER_CC_MACHINE}  ${abs_src}"
@@ -139,10 +163,12 @@ function(_userbin_build name outvar)
     get_property(_dir      GLOBAL PROPERTY FUZIX_PROG_${name}_DIR)
     get_property(_srcs     GLOBAL PROPERTY FUZIX_PROG_${name}_SOURCES)
     get_property(_libs     GLOBAL PROPERTY FUZIX_PROG_${name}_LIBS)
+    get_property(_bin      GLOBAL PROPERTY FUZIX_PROG_${name}_BIN)
+    get_property(_defs     GLOBAL PROPERTY FUZIX_PROG_${name}_DEFINES)
 
     set(_objs "")
     foreach(s ${_srcs})
-        _userbin_compile(_o "${APPSDIR}/${_dir}/${s}" "${APPSDIR}/${_dir}")
+        _userbin_compile(_o "${name}" "${APPSDIR}/${_dir}/${s}" "${APPSDIR}/${_dir}" "${_defs}")
         list(APPEND _objs "${_o}")
     endforeach()
 
@@ -157,13 +183,13 @@ function(_userbin_build name outvar)
         list(APPEND _lflags "-l${l}${USERCPU}")
     endforeach()
 
-    set(_app "${USER_BIN_DIR}/${name}")
+    set(_app "${USER_BIN_DIR}/${_bin}")
     add_custom_command(
         OUTPUT  "${_app}"
         COMMAND "${USER_CC}" ${USER_CC_MACHINE} -X -s "${_crt0}" ${_objs}
-                -L"${USER_LIB_DIR}" ${_lflags} -lc${USERCPU} -o "${_app}" -M
+                "-L${USER_LIB_DIR}" ${_lflags} -lc${USERCPU} -o "${_app}" -M
         DEPENDS ${_objs} "${_crt0}" "${LIBC_A}"
-        COMMENT "ld${USERCPU}  ${name}"
+        COMMENT "ld${USERCPU}  ${_bin}"
         VERBATIM)
     set(${outvar} "${_app}" PARENT_SCOPE)
 endfunction()
@@ -173,6 +199,8 @@ endfunction()
 # ---------------------------------------------------------------------------
 set(_bin_outputs "")
 set(_skipped_cpu "")
+set(_shadowed "")
+set(_claimed_bins "")     # binary names already produced by an earlier program
 # per-package enabled/total counters
 foreach(pkg ${_packages})
     set(_pkg_on_${pkg} 0)
@@ -182,6 +210,7 @@ endforeach()
 foreach(name ${_all_progs})
     get_property(_pk   GLOBAL PROPERTY FUZIX_PROG_${name}_PACKAGE)
     get_property(_cpus GLOBAL PROPERTY FUZIX_PROG_${name}_CPUS)
+    get_property(_bin  GLOBAL PROPERTY FUZIX_PROG_${name}_BIN)
     math(EXPR _pkg_tot_${_pk} "${_pkg_tot_${_pk}} + 1")
 
     _pkg_optvar("${_pk}" _ov)
@@ -200,9 +229,16 @@ foreach(name ${_all_progs})
     endif()
 
     if(_on AND _cpu_ok)
-        _userbin_build("${name}" _app)
-        list(APPEND _bin_outputs "${_app}")
-        math(EXPR _pkg_on_${_pk} "${_pkg_on_${_pk}} + 1")
+        if(_bin IN_LIST _claimed_bins)
+            # Another enabled program already produces this binary (e.g. util's
+            # `ed` vs V7's `ed`). Keep the first, shadow this one.
+            list(APPEND _shadowed "${_bin}(${_pk})")
+        else()
+            _userbin_build("${name}" _app)
+            list(APPEND _bin_outputs "${_app}")
+            list(APPEND _claimed_bins "${_bin}")
+            math(EXPR _pkg_on_${_pk} "${_pkg_on_${_pk}} + 1")
+        endif()
     elseif(_on AND NOT _cpu_ok)
         list(APPEND _skipped_cpu "${name}")
     endif()
@@ -228,6 +264,10 @@ endforeach()
 if(_skipped_cpu)
     list(JOIN _skipped_cpu " " _sc)
     message(STATUS "  skipped (CPU ${USERCPU} unsupported): ${_sc}")
+endif()
+if(_shadowed)
+    list(JOIN _shadowed " " _sh)
+    message(STATUS "  shadowed (binary already provided): ${_sh}")
 endif()
 message(STATUS "  total: ${_nbin} built of ${_nreg} registered  -> ${USER_BIN_DIR}")
 message(STATUS "  tune with -DFUZIX_PKG_<PKG>=ON/OFF, -DFUZIX_BINARIES_EXTRA/EXCLUDE, or -DFUZIX_CONFIG=<name>")

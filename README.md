@@ -83,12 +83,12 @@ CPU** and the toolchain prefix, so a single fcc toolchain file serves both:
 
 The PDP-11 tools are expected on `PATH`; point `-DFUZIX_PDP11_PREFIX=<dir>` at them if they live elsewhere. Use `cmake/toolchain-pdp11.cmake` for that target. The 8086 tools work the same way via `cmake/toolchain-i8086.cmake` and `-DFUZIX_IA16_PREFIX=<dir>`.
 
-The toolchain location is fully configurable via `cmake/toolchain-i8080.cmake` (or its `cmake/toolchain-z80u.cmake` alias). The default install prefix is `/opt/fcc`; override it as needed:
+The toolchain location is fully configurable via `cmake/toolchain-i8080.cmake` (or its `cmake/toolchain-z80u.cmake` alias). The default install prefix is `./toolchain/fcc`; override it as needed:
 
 ```sh
 # whole prefix
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
-      -DFUZIX_TOOLCHAIN_PREFIX=$HOME/cross/fcc
+      -DFUZIX_TOOLCHAIN_PREFIX=./toolchain/fcc
 
 # or point at the compiler / linker / libc individually
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake \
@@ -134,7 +134,7 @@ cmake --build build --target diskimage
 
 The produced `fuzix.bin` / `boot.dsk` are dummies (filled from the stub tools), but the whole build/link/pack/dd pipeline executes exactly as it would with the real toolchain — so command lines, object ordering, generated headers and image geometry are all verified. See [`toolchain/fake/README.md`](toolchain/fake/README.md) for details.
 
-For a real kernel, install the actual toolchain and point `FUZIX_TOOLCHAIN_PREFIX` at it (default `/opt/fcc`) instead.
+For a real kernel, install the actual toolchain and point `FUZIX_TOOLCHAIN_PREFIX` at it (default `./toolchain/fcc`) instead.
 
 ## Build
 
@@ -161,9 +161,9 @@ cmake --build build
 # -> build/image/fuzix.elf   (core build only: no loader/drivers yet)
 ```
 
-CMake prints a configuration summary showing exactly which modules were
-selected (CPU, platform, linker, memory manager, object count, …).
+CMake prints a configuration summary showing exactly which modules were selected (CPU, platform, linker, memory manager, object count, …).
 
+> Notes to MacOS users. System installed (from command-line-tools) yacc and bison won't work. Installation GNU bison required. Can be obtained from ftp://ftp.gnu.org/gnu/bison
 
 ### Build flags
 

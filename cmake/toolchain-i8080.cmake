@@ -5,7 +5,7 @@
 #     cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake ...
 #
 # The location of the cross toolchain is fully configurable. By default we
-# look under /opt/fcc (the standard Fuzix Compiler Kit install prefix), but
+# look under ./toolchain/fcc (the standard Fuzix Compiler Kit install prefix), but
 # every path can be overridden from the command line or environment, e.g.
 #
 #     cmake -B build \
@@ -23,12 +23,12 @@ set(CMAKE_SYSTEM_PROCESSOR  i8080)
 
 # --- Root of the cross toolchain --------------------------------------------
 # Order of precedence: -D on the command line, then the environment, then
-# the conventional /opt/fcc install location.
+# the conventional ./toolchain/fcc install location.
 if(NOT DEFINED FUZIX_TOOLCHAIN_PREFIX)
     if(DEFINED ENV{FUZIX_TOOLCHAIN_PREFIX})
         set(FUZIX_TOOLCHAIN_PREFIX "$ENV{FUZIX_TOOLCHAIN_PREFIX}")
     else()
-        set(FUZIX_TOOLCHAIN_PREFIX "/opt/fcc")
+        set(FUZIX_TOOLCHAIN_PREFIX "./toolchain/fcc")
     endif()
 endif()
 set(FUZIX_TOOLCHAIN_PREFIX "${FUZIX_TOOLCHAIN_PREFIX}"

@@ -32,6 +32,13 @@ file(MAKE_DIRECTORY "${ROOTFS_DIR}")
 
 find_program(PYTHON3 NAMES python3 python)
 
+# Where `make lib` / `make bin` drop their outputs. Package `f` sources that are
+# build artifacts (liberror.txt from the C library, /init and other binaries)
+# are found here by build-filesystem.py's --search, so the packages can name
+# them by the port's layout (lib/libs/..., bin/...) instead of a build path.
+set(_userland_lib_dir "${CMAKE_BINARY_DIR}/userland/lib")
+set(_userland_bin_dir "${CMAKE_BINARY_DIR}/userland/bin")
+
 # Script arguments assembled from the options above.
 set(_rootfs_args
     --version "${FUZIX_VERSION}"
@@ -39,7 +46,10 @@ set(_rootfs_args
     -g "${FUZIX_ROOTFS_ISIZE}" "${FUZIX_ROOTFS_BSIZE}"
     --mkfs "${TOOLOUT}/mkfs"
     --ucp  "${TOOLOUT}/ucp"
-    --fsck "${TOOLOUT}/fsck")
+    --fsck "${TOOLOUT}/fsck"
+    --search "."
+    --search "${_userland_lib_dir}"
+    --search "${_userland_bin_dir}")
 if(FUZIX_ROOTFS_PKG)
     list(APPEND _rootfs_args -p "${FUZIX_ROOTFS_PKG}")
 endif()

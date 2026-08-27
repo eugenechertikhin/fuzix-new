@@ -18,7 +18,10 @@ OUTDIR='@FUZIX_IMAGE_DIR@'
 cd "$OUTDIR"
 
 # 1. Link (platform-specific origin/split/discard flags).
-"$LD" @LINK_FLAGS_STR@ -o fuzix.raw "$@" "$LIBC" -m fuzix.tmpmap
+# All options must precede the object/library operands: a BSD/macOS getopt()
+# (unlike glibc) stops scanning at the first non-option, so a trailing
+# "-m fuzix.tmpmap" would be mistaken for input files.
+"$LD" @LINK_FLAGS_STR@ -o fuzix.raw -m fuzix.tmpmap "$@" "$LIBC"
 
 # 2. Sort the symbol map numerically by (hex) address.
 perl -lpe '$_=hex' fuzix.tmpmap | paste -d' ' - fuzix.tmpmap | sort -n | cut -d' ' -f 2- > fuzix.map

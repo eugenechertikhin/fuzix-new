@@ -19,4 +19,4 @@ cmake --build build
 # -> build/image/fuzix.bin  (a dummy image, but the pipeline ran for real)
 ```
 
-For a real kernel build, install the real toolchain and point `FUZIX_TOOLCHAIN_PREFIX` at it (default `/opt/fcc`) instead.
+For a real kernel build, install the real toolchain and point `FUZIX_TOOLCHAIN_PREFIX` at it (default `./toolchain/fcc`) instead.

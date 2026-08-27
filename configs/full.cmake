@@ -1,7 +1,19 @@
-# configs/full.cmake - build everything currently in the registry.
-#
-# Enable all program packages (coreutils, coreutils-extra, editors, shell).
-set(FUZIX_PKG_COREUTILS       ON  CACHE BOOL "")
-set(FUZIX_PKG_COREUTILS_EXTRA ON  CACHE BOOL "")
-set(FUZIX_PKG_EDITORS         ON  CACHE BOOL "")
-set(FUZIX_PKG_SHELL           ON  CACHE BOOL "")
+# configs/full.cmake - build every program currently in the registry.
+set(FUZIX_PKG_COREUTILS       ON CACHE BOOL "")
+set(FUZIX_PKG_COREUTILS_EXTRA ON CACHE BOOL "")
+set(FUZIX_PKG_EDITORS         ON CACHE BOOL "")
+set(FUZIX_PKG_UTIL_MISC       ON CACHE BOOL "")
+set(FUZIX_PKG_FFORTH          ON CACHE BOOL "")
+set(FUZIX_PKG_SHELL           ON CACHE BOOL "")
+# Wave 1: program collections
+set(FUZIX_PKG_GAMES           ON CACHE BOOL "")
+set(FUZIX_PKG_V7              ON CACHE BOOL "")
+set(FUZIX_PKG_V7GAMES         ON CACHE BOOL "")
+set(FUZIX_PKG_CURSESGAMES     ON CACHE BOOL "")
+set(FUZIX_PKG_GAMES_2048      ON CACHE BOOL "")
+# Wave 2 (partial)
+set(FUZIX_PKG_LANG            ON CACHE BOOL "")
+set(FUZIX_PKG_TOOLS           ON CACHE BOOL "")
+set(FUZIX_PKG_NET             ON CACHE BOOL "")
+set(FUZIX_PKG_MWC             ON CACHE BOOL "")
+set(FUZIX_PKG_DEV             ON CACHE BOOL "")

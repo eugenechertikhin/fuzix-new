@@ -1,0 +1,190 @@
+Graphics is still a prototype.
+
+The proposed method of operation is as follows
+
+Issue ioctl(ttyfd, GFXIOC_GETINFO , &display)
+
+An error means no graphics support, otherwise you get the display data for
+the default mode.
+
+If it reports GFX_PALETTE then you can get the palette entries and try
+and set them.
+
+If it reports GFX_MULTIMODE then you can call GFXIOC_GETMODE with a uint8_t
+set and get back a full buffer of the display for that mode. Mode 0 is always
+the default mode and will support text (in other words any kind of 'recovery'
+can just force mode 0). If there are multiple text modes and some work on all
+displays then mode 0 should be one of the "all displays" modes.
+
+The formats defined so far are
+
+FMT_MONO_BW		Black with white monochrome bitmap. The data
+			is on lines stride pixels wide, bit 7 is left
+FMT_MONO_WB		Ditto but white with black
+
+These are the most common small device modes and are defined this way to
+avoid needing palette support on the tiniest devices.
+
+FMT_COLOUR4		2bit packed pixel
+FMT_COLOUR16		4bit packed pixel
+FMT_SPECTRUM		ZX Spectrum
+FMT_VDP			VDP display (which is mostly plain weird)
+
+Hardware types are defined for
+
+HW_UNACCEL		Just a framebuffer of some kind
+HW_VDP_9918		MSX1, MTX and similar
+HW_VDP_9938		MSX2
+
+It's assumed that for some stuff certain apps will want to go direct to GPU
+hence this information.
+
+The properties are
+
+GFX_MAPPABLE		Can be accessed if mapped as part of process memory
+			(Mostly for 16/32bit platforms)
+GFX_PALETTE		Has a colour palette palette ioctls
+GFX_OFFSCREEN		It is meaningful to write or read memory in the full
+			physical range not just the displayed window
+GFX_VBLANK		Supports wait for vblank
+GFX_ENABLE		Graphics mode must be enabled/disabled (ie its not
+			just the text mode too)
+GFX_MULTIMODE		There are multiple display modes possible
+GFX_PALETTE_SET		The colour table is settable
+
+Memory holds the amount of RAM for hardware where this also matters (VDP
+primarily ?, otherwise 0)
+
+There are things that need covering if they make sense
+- Sprite discovery, description, setup and movement
+- Blit with stencil
+
+The attributes describe colours and drawing modes.
+
+The basic idea is that a typical 8bit unaccelerated device need only support
+a few minimal operations and most ioctls can be completely ignored but we
+still can support smarter devices while having a direct route for accelerators
+for those cases they are needed (eg games)
+
+Need to decide on the best approach for text and fonts
+
+Rather than using graphics operations like lines and rectangles we replace
+all the graphics operations proposed with game style sprite rectangles
+
+We then need exactly two graphics rendering commands (three if we do blits).
+In addition the lines are easily verified and clipped before drawing.
+
+
+GFX_DRAW	y x (byte aligned) buffer len (w and h is implied)
+
+	Where buffer holds
+
+	[Repeats.b|0 = line end] [and] [or] * n
+
+	0 0 = end of draw (use 1 FF 00 for a skipped line)
+
+	Each drawing operations is performed as
+
+	*screen &= and;
+	*screen ^= or;
+
+	Which can be done very fast on most processors
+
+	Logic table
+
+	and    xor
+	0	0	clear bit
+	0	1	set bit
+	1	0	keep bit
+	1	1	invert bit
+
+l0:
+	lda ,x
+	beq nextline
+l1:
+	ldb 1,x
+	andb ,u
+	eorb 2,x
+	stb u+
+	deca
+	bne l1
+	leax 3,x
+	bra l0
+
+l0:	xor a
+	ld b, (hl)
+	cp b
+	jr z, nextline
+	inc hl
+	ld c, (hl)
+	inc hl
+l1:
+	ld a, (de)
+	and c
+	xor (hl)
+	ld (de),a
+	inc de
+	djnz l1
+	inc hl
+	jr l0
+
+
+GFX_READ	y x (byte aligned) h w buffer
+	copy up to 512 bytes from video to userspace
+
+The only icky case then is the matter of the machines with head-up-backside
+colour attributes (eg the ZX Spectrum). That could probably be handled by
+having a GFX_ADRAW to do attribute draws or somesuch
+
+If we go this way then
+
+1. Do we guarantee clipping versus the display or versus end of video ram
+   or just error bad video
+
+2. Do we allow a repeat to cross a scan line (probably not - its a PITA)
+
+3. Do we allow mask of repeats for planar video (yes)
+
+4. If we are clipping against the display do we just allow configurable clip
+   rectangles given it's near enough the same logic ? - NO, the buffer can
+   expand if we clip to pixel alignments. Thats fine for userspace as it can
+   itself do clipping and always generate buffers whose left/right is a
+   single instance of something (so don't expand).
+
+5. What is the best way to arrange the operations so we don't end up using
+   bounce buffers if avoidable ? (direct mapping user space on some systems
+   perhaps, but that implies the verifier is asm). For those we can direct
+   map it, just put a copy of the rendering loop *in* userspace and avoid
+   syscalls !
+
+6. Do we still allow for screen/screen blits as well (eg scrolling)  YES
+
+7. Should there be a way to access the system font from userspace for graphics
+   work ?
+
+8. Do we want an op for a fast byte aligned pure copy. It's tiny amounts of
+   code and some stuff is a lot faster that way (eg TRS80 can use otir)
+   YES - GFX_READ and GFX_WRITE core are almost identical on most boxes and
+   can nicely self modify.
+
+9. We need an API for sprites, for character based displays with loadable
+   fonts and also for >8bit chars in char display.
+
+	struct fontinfo {
+		uint8_t width;	/* Bits */
+		uint8_t height;	/* Lines */
+		uint16_t base;	/* First symbol that is programable */
+		uint16_t last;	/* Last programmable symbol */
+	};
+
+	struct fontload {
+		uint16_t base;
+		uint16_t last
+		uint8_t *data;
+	};
+
+  or similar
+
+10. What about displays that don't really attach as such to a tty
+
+11. Hardware cursor on/off

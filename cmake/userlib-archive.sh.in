@@ -15,6 +15,11 @@
 set -e
 
 AR="@USER_AR@"
+# Toolchain bin (lorder<cpu>/nm<cpu>) and CPU, used to order archive members.
+TOOLBIN="@TOOLBIN@"
+USERCPU="@USERCPU@"
+PATH="$TOOLBIN:$PATH"; export PATH
+
 OUT="$1"; shift
 LISTFILE="$1"; shift
 
@@ -25,6 +30,18 @@ if [ -n "$LISTFILE" ] && [ -f "$LISTFILE" ]; then
     done < "$LISTFILE"
 fi
 OBJS="$OBJS $*"
+
+# The ld<cpu> linkers are single-pass: with a GNU armap (symbol index) they can
+# pull archive members on demand, but the portable macOS archiver writes no
+# index, so members must be pre-ordered so every definition precedes its use.
+# lorder<cpu>|tsort does exactly that (as the upstream libc build does); fall
+# back to list order only when the ordering tools are unavailable.
+LORDER="lorder${USERCPU}"
+if command -v "$LORDER" >/dev/null 2>&1 && command -v tsort >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    ORDERED=$("$LORDER" $OBJS | tsort)
+    OBJS="$ORDERED"
+fi
 
 rm -f "$OUT"
 # shellcheck disable=SC2086

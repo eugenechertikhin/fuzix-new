@@ -22,7 +22,7 @@ d 0755 /usr/games/lib
 d 0755 /usr/include
 d 0755 /usr/share
 
-f 0644 /usr/lib/liberror.txt            ../../Library/libs/liberror.txt
+f 0644 /usr/lib/liberror.txt            lib/libs/liberror.txt
 
 d 0755 /var/spool
 d 0755 /var/mail
@@ -134,7 +134,7 @@ f 0755 /etc/rc.reboot etc-files/rc.reboot
 f 0644 /etc/mtab      etc-files/mtab
 f 0644 /etc/fstab     etc-files/fstab 
 
-f 0755 /init          ../../Applications/util/init
+f 0755 /init          bin/util/init
 
 
 d 0755 /usr/doc
@@ -157,4 +157,4 @@ d 0755 /usr/src
 ##d 0755 /usr/src
 # duplicate file - not allowed (but ucp *will* allow these)
 # files are specified relative to the location of the package file
-##f 0644 /usr/share/liberror.txt            ../../Library/libs/liberror.txt
+##f 0644 /usr/share/liberror.txt            lib/libs/liberror.txt

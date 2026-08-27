@@ -4,8 +4,22 @@
 #include <sys/types.h>
 #include <sys/graphics.h>
 
-static struct display d;
-static struct videomap v;
+/*
+ * Port I/O abstraction.
+ *
+ * The original test used SDCC's port-mapped variables (__sfr __at PORT name;)
+ * and accessed them as ordinary lvalues.  The Fuzix Compiler Kit has no __sfr,
+ * so we express every access through WR()/RD() macros:
+ *
+ *   - SDCC keeps the port-mapped variables and WR/RD just assign/read them.
+ *   - The Fuzix Compiler Kit turns the port name into a constant and uses the
+ *     __builtin_out/__builtin_in intrinsics, which the z80 code generator
+ *     inlines to OUT (n),A / IN A,(n).  (Only wired for z80: the 8080 backend
+ *     emits a call to a runtime helper that does not exist, so this program is
+ *     registered CPUS z80.)
+ */
+#if defined(__SDCC) || defined(__SDCC_z80) || defined(__SDCC_z180) || \
+    defined(__SDCC_r2k) || defined(__SDCC_ez80_z80) || defined(SDCC)
 
 __sfr __at 0x00 hrg1b_off;
 __sfr __at 0x01 hrg1b_on;
@@ -13,6 +27,48 @@ __sfr __at 0x02 hrg1b_l;
 __sfr __at 0x03 hrg1b_h;
 __sfr __at 0x04 hrg1b_r;
 __sfr __at 0x05 hrg1b_w;
+__sfr __at 0xEC le18_data;
+__sfr __at 0xED le18_x;
+__sfr __at 0xEE le18_y;
+__sfr __at 0xEF le18_ctrl;
+__sfr __at 0xFF microlabs_ctrl;
+__sfr __at 0x80 trs80_x;
+__sfr __at 0x81 trs80_y;
+__sfr __at 0x82 trs80_d;
+__sfr __at 0x83 trs80_ctrl;
+
+#define WR(name, val)	((name) = (uint8_t)(val))
+#define RD(name)	(name)
+
+#else
+
+/* Fuzix Compiler Kit: the name becomes a constant port number. */
+#define hrg1b_off	0x00
+#define hrg1b_on	0x01
+#define hrg1b_l		0x02
+#define hrg1b_h		0x03
+#define hrg1b_r		0x04
+#define hrg1b_w		0x05
+#define le18_data	0xEC
+#define le18_x		0xED
+#define le18_y		0xEE
+#define le18_ctrl	0xEF
+#define microlabs_ctrl	0xFF
+#define trs80_x		0x80
+#define trs80_y		0x81
+#define trs80_d		0x82
+#define trs80_ctrl	0x83
+
+extern void __builtin_out(uint16_t port, uint8_t val);
+extern uint8_t __builtin_in(uint16_t port);
+
+#define WR(name, val)	__builtin_out((name), (uint8_t)(val))
+#define RD(name)	__builtin_in((name))
+
+#endif
+
+static struct display d;
+static struct videomap v;
 
 static int test_hrg1b(void)
 {
@@ -35,34 +91,30 @@ static int test_hrg1b(void)
         fprintf(stderr, "HR1G reported on wrong port.\n");
         exit(1);
     }
-    hrg1b_on = 255;
+    WR(hrg1b_on, 255);
     for (col = 0; col < 64; col++) {
         for (row = 0; row < 16; row ++) {
             for (line = 0; line < 12; line += 2) {
-                uint16_t v = col | (row << 6) | (line << 10);
-                hrg1b_l = v;
-                hrg1b_h = (v >> 8);
-                hrg1b_w = 0x2A;
-                v += (1 << 10);
-                hrg1b_h = (v >> 8);
-                hrg1b_w = 0x15;
-                
+                uint16_t w = col | (row << 6) | (line << 10);
+                WR(hrg1b_l, w);
+                WR(hrg1b_h, (w >> 8));
+                WR(hrg1b_w, 0x2A);
+                w += (1 << 10);
+                WR(hrg1b_h, (w >> 8));
+                WR(hrg1b_w, 0x15);
+
             }
         }
     }
-    c = hrg1b_r;
+    c = RD(hrg1b_r);
     getchar();
-    hrg1b_off = 255;
+    WR(hrg1b_off, 255);
     if (c != 0x15) {
         fprintf(stderr, "hrg1: read fail.\n");
         exit(1);
     }
+    return 0;
 }
-
-__sfr __at 0xEC le18_data;
-__sfr __at 0xED le18_x;
-__sfr __at 0xEE le18_y;
-__sfr __at 0xEF le18_ctrl;
 
 static int test_le18(void)
 {
@@ -85,26 +137,26 @@ static int test_le18(void)
         fprintf(stderr, "LE18 reported on wrong port.\n");
         exit(1);
     }
-    le18_ctrl = 1;
+    WR(le18_ctrl, 1);
     for (col = 0; col < 64; col++) {
-        le18_x = col;
+        WR(le18_x, col);
         for (row = 0; row < 192; row++) {
-            le18_y = row++;
-            le18_data = 0x2A;
-            le18_y = row;
-            le18_data = 0x15;
+            WR(le18_y, row++);
+            WR(le18_data, 0x2A);
+            WR(le18_y, row);
+            WR(le18_data, 0x15);
         }
     }
-    c = le18_data;
+    c = RD(le18_data);
     getchar();
-    le18_ctrl = 0;
+    WR(le18_ctrl, 0);
     if ((c & 0x3F) != 0x15) {
         fprintf(stderr, "le18: read fail.\n");
         exit(1);
     }
+    return 0;
 }
 
-__sfr __at 0xFF microlabs_ctrl;
 uint8_t *microlabs_fb = (uint8_t *)0x3C00;
 
 static void test_microlabs(void)
@@ -131,23 +183,18 @@ static void test_microlabs(void)
         fprintf(stderr,"Model 3 Graftx fbmem should be 3C00-3FFF.\n");
         exit(1);
     }
-    
+
     for (col = 0; col < 64; col++) {
         for (row = 0; row < 16; row ++) {
             for (line = 0; line < 12; line ++) {
-                microlabs_ctrl = 0xE0 | (line << 1);
+                WR(microlabs_ctrl, 0xE0 | (line << 1));
                 microlabs_fb[(row << 6) | col] = (line & 1) ? 0xAA : 0x55;
             }
         }
     }
     getchar();
-    microlabs_ctrl = 0;    
+    WR(microlabs_ctrl, 0);
 }
-    
-__sfr __at 0x80 trs80_x;
-__sfr __at 0x81 trs80_y;
-__sfr __at 0x82 trs80_d;
-__sfr __at 0x83 trs80_ctrl;
 
 void test_trs80gfx(void)
 {
@@ -170,23 +217,23 @@ void test_trs80gfx(void)
         fprintf(stderr, "TRS80 HRG reported on wrong port.\n");
         exit(1);
     }
-    trs80_ctrl = 0xB3;	/* clock x on write */
+    WR(trs80_ctrl, 0xB3);	/* clock x on write */
     for (row = 0; row < 240; row++) {
-        trs80_y = row++;
-        trs80_x = 0;
+        WR(trs80_y, row++);
+        WR(trs80_x, 0);
         /* The card is designed so you can effectively use otir and friends */
         for (col = 0; col < 80; col++)
-            trs80_d = 0xAA;
-        trs80_y = row;
-        trs80_x = 0;
+            WR(trs80_d, 0xAA);
+        WR(trs80_y, row);
+        WR(trs80_x, 0);
         for (col = 0; col < 80; col++)
-            trs80_d = 0x55;
+            WR(trs80_d, 0x55);
     }
-    trs80_y = 0;
-    trs80_x = 0;
-    c = trs80_d;
+    WR(trs80_y, 0);
+    WR(trs80_x, 0);
+    c = RD(trs80_d);
     getchar();
-    trs80_ctrl = 0;
+    WR(trs80_ctrl, 0);
     if (c != 0xAA) {
         fprintf(stderr, "trs80gfx: read fail.\n");
         exit(1);
@@ -242,7 +289,7 @@ void unaccelerated(void)
         fprintf(stderr, "unsupported unaccelerated format %d.\n", d.format);
     }
 }
-    
+
 int main(int argc, char *argv[])
 {
     if (ioctl(0, GFXIOC_GETINFO, &d)) {
