@@ -32,7 +32,7 @@ tms7000 tms9995 wrx6 z8 z80
   - games: `games` (+ `advent` from cave), `games-2048`, `v7games`, `cursesgames`.
   - editors: `ue`/`ue.fuzix`/`ue.ansi`; `lang`: `picol`, `cpp`; `net`: `cpnet`.
   - tools: `flashrom`, and `dasm09`/`fview` (6809-only via `CPUS`).
-- **Not yet ported** (⬜): `basic`, `netd`, `cpm`, `cpmfs`, `emulators`, `db`, `rpilot` (SDCC).
+- **Not yet ported** (⬜): `basic`, `netd`, `cpm`, `emulators`, `db`, `rpilot` (SDCC).
 
 Opt-in packages are OFF by default; `configs/full.cmake` enables all. (`cpuinfo` builds only on CPUs that ship a `cpuinfo-<cpu>` asm helper.)
 
@@ -308,7 +308,7 @@ Package `V7/cmd`. CPU: **all (−6803)**.
 | `netd`      | `netd-*`, `ifconfig`, `ping`, `telnet`, `httpd`, `htget`, `dig`, `echoping`, `ntpdate`, `tinyirc` | all (−6803) | ⬜ |
 | `dw`        | `dw`, `dwdate`, `dwgetty`, `dwterm` (DriveWire) | all (−6803,r2k,wrx6) | ✅ |
 | `cpm`       | `runcpm` (CP/M emulator) | all (−6803) | ⬜ |
-| `cpmfs`     | CP/M FS access | all (−6803) | ⬜ |
+| `cpmfs`     | CP/M FS access (exe `cpm`) | all (−6803) | ✅ |
 | `cpnet`     | CP/NET | all (−6803) | ✅ |
 | `emulators` | emulators | all (−6803) | ⬜ |
 | `flashrom`  | `flashrom` | all (−6803) | ✅ |

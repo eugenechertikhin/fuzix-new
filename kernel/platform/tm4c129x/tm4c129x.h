@@ -1,0 +1,51 @@
+#ifndef __TM4C129X_H
+#define __TM4C129X_H
+
+#include <stdint.h>
+
+#define SDCARD_SSI_PORT 3
+
+void tm4c129x_init(void);
+void sysclock_init(void);
+
+void tm4c129x_modreg(unsigned int adr, uint32_t clr, uint32_t set);
+
+/*
+ *	Hardware definitions
+ */
+
+#define SYS_CLOCK			120000000	/* 120MHz */
+#define BOARD_LOOPSPERMSEC		11401U
+
+/*
+ *	NVIC interrupt controller
+ */
+#define NVIC_ICTR			(0xE000E004)
+#define NVIC_SYSTICK_CTRL		(0xE000E010)
+#define NVIC_SYSTICK_CTRL_ENABLE	0x01
+#define NVIC_SYSTICK_CTRL_TICKINT	0x02
+#define NVIC_SYSTICK_CTRL_CLKSOURCE	0x04
+#define NVIC_SYSTICK_CTRL_COUNTFLAG	0x10000
+
+#define NVIC_SYSTICK_RELOAD		(0xE000E014)
+#define NVIC_SYSTICK_CURRENT_OFFSET	(0xE000E018)
+#define NVIC_SYSTICK_CALIB_OFFSET	(0xE000E01C)
+
+#define NVIC_VECTAB			(0xE000ED08)
+#define NVIC_ENABLE			0xE000E100
+#define NVIC_CLRENABLE			0xE000E180
+#define NVIC_IRQ0_31_CLEAR		0xE000E180
+#define NVIC_ICTR_INTLINESNUM_MASK	0x0F
+#define NVIC_SYSH_PRIORITY_PR15_MASK	0xFF000000
+#define NVIC_SYSH_PRIORITY_PR15_SHIFT	24
+
+#define NVIC_SYSH12_15_PRIORITY		(0xE000ED20)
+
+#define NVIC_SYSH_PRIORITY_DEFAULT	0x80
+
+#define NVIC_SYSHCON			(0xE000ED24)
+#define NVIC_SYSHCON_MEMFAULTEN		0x10000
+#define NVIC_SYSHCON_BUSFAULTEN		0x20000
+#define NVIC_SYSHCON_USGFAULTEN		0x40000
+
+#endif /* __TM4C129X_H */

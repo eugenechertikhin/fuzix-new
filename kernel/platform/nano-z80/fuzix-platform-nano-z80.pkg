@@ -1,0 +1,14 @@
+package platform-nano-z80
+
+disable-pkg platform-nano-z80
+
+f 0755 /bin/uef	../../../Applications/ue/ue.fuzix
+
+r /etc/inittab
+f 0644 /etc/inittab userspace/inittab
+
+r /etc/passwd
+f 0755 /etc/passwd userspace/passwd
+
+f 0755 /root/.profile userspace/profile-root
+

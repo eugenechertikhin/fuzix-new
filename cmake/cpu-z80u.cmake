@@ -13,7 +13,15 @@ set(CPU_LD_TOOL       "ldz80")                       # linker binary (in prefix/
 set(CPU_LIBC_SUBPATH  "z80/libz80.a")                # C library under prefix/lib
 
 # Low level has a "normal" (common RAM) and a "thunked" (no common RAM) variant.
-set(FUZIX_Z80U_MODE "normal" CACHE STRING "Z80U low-level variant: normal|thunked")
+# A few boards have no common RAM (the whole 64K switches at once) and need the
+# "thunked" low-level variant. Default the mode per board so a bare
+# -DFUZIX_PLATFORM=<b> picks the right one; an explicit -DFUZIX_Z80U_MODE wins.
+if(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|simple80)$")
+    set(_z80u_mode_default "thunked")
+else()
+    set(_z80u_mode_default "normal")
+endif()
+set(FUZIX_Z80U_MODE "${_z80u_mode_default}" CACHE STRING "Z80U low-level variant: normal|thunked")
 set_property(CACHE FUZIX_Z80U_MODE PROPERTY STRINGS normal thunked)
 if(FUZIX_Z80U_MODE STREQUAL "thunked")
     set(CPU_LOWLEVEL "kernel/cpu/z80u/lowlevel-z80u-thunked.S")

@@ -349,6 +349,16 @@ if(USERCPU STREQUAL "8080")
     fuzix_program(NAME cc  PACKAGE dev  CRT0 stdio  DIR cc  DEFINES CPU_8080  SOURCES ccfuzix.c)
 endif()
 
+# ==== cpmfs: read/write CP/M floppy images + CP/M-like shell (-> exe 'cpm') ====
+# Helge Skrivervik's cpm, ANSIfied by Alan Cox.  Plain C, one exe from 20 .c
+# (gensktab.c is the runtime skew-table builder gen_sktab(), NOT a host
+# generator).  Upstream only ships a real Makefile for a few CPUs; builds fine
+# on the fcc CPUs.  cpm.hlp/cpm.1 are runtime/doc data, not build inputs.
+fuzix_program(NAME cpm  PACKAGE cpmfs  CRT0 stdio  DIR cpmfs
+    SOURCES bitmap.c blockio.c cclose.c ccreat.c cfillbuf.c cflsbuf.c cmdhdl.c
+            copen.c copy.c cpm.c delete.c dirhdl.c extent.c ffc.c gensktab.c
+            hexdmp.c interact.c physio.c pip.c rename.c)
+
 # ==== net/comms: dw (DriveWire), plato terminal ====
 fuzix_program(NAME dw  PACKAGE net  CRT0 stdio  DIR dw  SOURCES dw.c)
 fuzix_program(NAME dwgetty  PACKAGE net  CRT0 stdio  DIR dw  SOURCES dwgetty.c)

@@ -42,8 +42,13 @@ set(FUZIX_SUBVERSION "\"\"" CACHE STRING "FUZIX subversion string")
 # ---------------------------------------------------------------------------
 set(FUZIX_CPU      "i8080" CACHE STRING "Target CPU: i8080 | z80u")
 set(FUZIX_PLATFORM "v8080" CACHE STRING "Target platform/board: v8080 | z80pack")
-set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 z80u pdp11 i8086)
-set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS v8080 z80pack rcbus-8080 pdp11 ibmpc)
+set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 z8 super8 z80u pdp11 i8086 armm4)
+set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS
+    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x pdp11 ibmpc
+    # z80u boards
+    aqplus challengeriii lobo-max80 nascom nano-z80 rc2014-tiny rcbus-tp128
+    sbcv2 sbc2g sc720 z80membership z1013 zrc z80all z80-mbc2 z80retro
+    searle tomssbc simple80)
 
 # Toolchain kind: "fcc" (Fuzix Compiler Kit, ld8080/ldz80 + pack85) or "gcc"
 # (standard gcc + linker script + objcopy, e.g. pdp11). Set by the toolchain
@@ -85,11 +90,22 @@ include("${_fuzix_config_file}")
 # 2. Memory manager selection  (exactly one)
 # ---------------------------------------------------------------------------
 # Default memory manager depends on the board (pdp11 is swap-only, ibmpc uses
-# the 8086 4K-page banking model).
+# the 8086 4K-page banking model). Several z80u boards are swap-only
+# (mm/simple.c) or use the 4x16K banked model (mm/bank16k.c) rather than the
+# generic fixed-bank default; encode those here so a bare -DFUZIX_PLATFORM=<b>
+# picks the right MM without extra flags. An explicit -DFUZIX_MM still wins.
 if(FUZIX_PLATFORM STREQUAL "pdp11")
     set(_mm_default "simple")
 elseif(FUZIX_PLATFORM STREQUAL "ibmpc")
     set(_mm_default "bank8086")
+elseif(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|rcbus-80c188)$")
+    set(_mm_default "simple")     # swap-only boards
+elseif(FUZIX_PLATFORM MATCHES "^(aqplus|z80retro)$")
+    set(_mm_default "bank16k")    # 4x16K banked boards
+elseif(FUZIX_PLATFORM STREQUAL "rcbus-8070")
+    set(_mm_default "bank16kfc")  # 4x16K flash-friendly banked
+elseif(FUZIX_PLATFORM STREQUAL "tm4c129x")
+    set(_mm_default "flat")       # ARM Cortex-M flat address space
 else()
     set(_mm_default "bankfixed")
 endif()
@@ -140,7 +156,15 @@ else()
     set(MEMALLOC_SOURCE mm/malloc.c)
 endif()
 
-option(FUZIX_MULTIPROCESS "Allow multiple processes resident in memory" ON)
+# Swap-only boards run one process resident at a time (upstream config.h has
+# CONFIG_MULTI undefined); default multiprocess OFF for them so a bare build
+# matches the board. An explicit -DFUZIX_MULTIPROCESS=ON/OFF still wins.
+if(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80)$")
+    set(_mp_default OFF)
+else()
+    set(_mp_default ON)
+endif()
+option(FUZIX_MULTIPROCESS "Allow multiple processes resident in memory" ${_mp_default})
 
 # ---------------------------------------------------------------------------
 # 3. Filesystem selection
@@ -233,9 +257,17 @@ set(FUZIX_INCLUDE_FLAGS
     -I${KDIR}/platform/${FUZIX_PLATFORM}
     -I${KDIR}/include
     -I${KDIR}/dev
-    -I${KDIR}/dev/z80pack
     -I${KDIR}/lib
     -I${GEN}/include)               # generated sysinfoblk.h
+# Per-platform driver sub-directories: a board may keep its own drivers under
+# kernel/dev/<platform>, and several Z80 boards pull shared drivers from the
+# nascom-family kernel/dev/80bus tree. Add whichever exist so their flattened
+# plain-filename includes (devtty.h, fdc80.h, ...) resolve.
+foreach(_devsub "${FUZIX_PLATFORM}" 80bus z80pack net)
+    if(IS_DIRECTORY "${KDIR}/dev/${_devsub}")
+        list(APPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/${_devsub})
+    endif()
+endforeach()
 
 # Preprocessor defines derived from the options above.
 set(FUZIX_DEFS "")
@@ -358,6 +390,19 @@ elseif(LINK_STYLE STREQUAL "ld-elf")
                    "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
     set(_link_dep "${LINK_SCRIPT}")
     set(_link_comment "ld -T -> fuzix.elf")
+elseif(LINK_STYLE STREQUAL "arm-elf")
+    # gcc/armm4: arm-none-eabi-ld -T <script> --entry=start -> ELF image.
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/link-image-armm4.sh.in"
+                   "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
+    set(_link_dep "${LINK_SCRIPT}")
+    set(_link_comment "arm-ld -T --entry=start -> fuzix.elf")
+elseif(LINK_STYLE STREQUAL "fcc-raw")
+    # fcc/z8: ldz8 emits the loadable binary directly, no pack85 step.
+    string(REPLACE ";" " " LINK_FLAGS_STR "${LINK_FLAGS}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/link-image-z8.sh.in"
+                   "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
+    set(_link_dep "${CMAKE_BINARY_DIR}/link-image.sh")
+    set(_link_comment "${CPU_LD_TOOL} -> fuzix.bin (no pack85)")
 else()
     # fcc: ld8080/ldz80 + pack85.
     string(REPLACE ";" " " LINK_FLAGS_STR "${LINK_FLAGS}")
