@@ -15,21 +15,25 @@ fuzix-new/
 │   ├── toolchain-i8080.cmake     # generic fcc cross toolchain (also used by i8085/z80u)
 │   ├── toolchain-i8085.cmake     # alias of the above for i8085
 │   ├── toolchain-8070.cmake      # alias of the above for 8070
+│   ├── toolchain-6800.cmake      # alias of the above for 6800
 │   ├── toolchain-z8.cmake        # alias of the above for z8
 │   ├── toolchain-super8.cmake    # alias of the above for super8
 │   ├── toolchain-armm4.cmake     # arm-none-eabi gcc toolchain
 │   ├── toolchain-z80u.cmake      # alias of the above for z80u
+│   ├── toolchain-z80.cmake       # classic Z80 SDCC toolchain (sdcc/sdasz80/sdldz80)
 │   ├── toolchain-pdp11.cmake     # pdp11-aout gcc toolchain
 │   ├── toolchain-i8086.cmake     # ia16-elf gcc toolchain
 │   ├── cpu-i8080.cmake           # i8080: -m8080, ld8080, lib8080.a
 │   ├── cpu-i8085.cmake           # i8085: -m8085, ld8080, lib8085.a
 │   ├── cpu-8070.cmake            # 8070:  -m8070, ld8070, lib8070.a (no pack85)
+│   ├── cpu-6800.cmake            # 6800:  -m6800, ld6800, lib6800.a (no pack85, big-endian)
 │   ├── cpu-z8.cmake              # z8:    -mz8,   ldz8,   libz8.a (no pack85)
 │   ├── cpu-super8.cmake          # super8: -msuper8, ldsuper8, libsuper8.a (no pack85)
 │   ├── cpu-armm4.cmake           # armm4: arm gcc, cortex-m4, elf32, --entry=start
 │   ├── cpu-armm0.cmake           # armm0: RP2040, Pico SDK build (no fcc/ld path)
 │   ├── pico_sdk_import.cmake     # Pico SDK locator (included before project())
 │   ├── cpu-z80u.cmake            # z80u:  -mz80,  ldz80,  libz80.a, normal|thunked
+│   ├── cpu-z80.cmake             # z80:   classic SDCC (sdcc/sdasz80/sdldz80), z80.lib
 │   ├── cpu-pdp11.cmake           # pdp11: gcc kind, ld+objcopy, simple MM
 │   ├── cpu-i8086.cmake           # i8086: gcc kind, ld -> fuzix.elf, bank8086 MM
 │   ├── platform-v8080.cmake      # v8080 link recipe (object order, link flags)
@@ -38,6 +42,7 @@ fuzix-new/
 │   ├── platform-rcbus-8085.cmake # rcbus-8085 link recipe
 │   ├── platform-rcbus-z8.cmake   # rcbus-z8 link recipe
 │   ├── platform-rcbus-8070.cmake # rcbus-8070 link recipe
+│   ├── platform-rcbus-6800.cmake # rcbus-6800 link recipe
 │   ├── platform-rcbus-super8.cmake # rcbus-super8 link recipe
 │   ├── platform-rcbus-80c188.cmake # rcbus-80c188 link recipe (ia16, fuzix.ld)
 │   ├── platform-tm4c129x.cmake   # tm4c129x link recipe (arm, fuzix.ld)
@@ -76,6 +81,7 @@ fuzix-new/
 
 There are several **toolchain kinds**. 
 - The 8080/Z80 targets use the **Fuzix Compiler Kit** (`fcc`) + **Fuzix Bintools**; 
+- The classic **Z80** (`z80`, board `2063`) uses **SDCC** (`sdcc`/`sdasz80`/`sdldz80`): banked `.lnk` link to Intel HEX, then `makebin` + `binman` to a flat image. Install prefix defaults to `./toolchain/sdcc`. (Its fcc userland still comes from `./toolchain/fcc`.)
 - The PDP-11 use standard **gcc** cross toolchains `pdp11-aout-gcc` with a linker script flattens with `objcopy`.
 - The 8086 use standard **gcc** cross toolchains `ia16-elf-gcc` and links straight to an ELF.
 
@@ -89,11 +95,13 @@ For the fcc targets the linker and C library are **derived from the selected CPU
 | `i8080` | fcc  | `fcc -m8080` | `ld8080` | `pack85`  | `lib8080.a` |
 | `i8085` | fcc  | `fcc -m8085` | `ld8080` | `pack85`  | `lib8085.a` |
 | `8070`  | fcc  | `fcc -m8070` | `ld8070` | (none)    | `lib8070.a` |
+| `6800`  | fcc  | `fcc -m6800` | `ld6800` | (none)    | `lib6800.a` (big-endian) |
 | `z8`    | fcc  | `fcc -mz8`   | `ldz8`   | (none)    | `libz8.a`   |
 | `super8`| fcc  | `fcc -msuper8` | `ldsuper8` | (none) | `libsuper8.a` |
 | `armm4` | gcc  | `arm-none-eabi-gcc` | `arm-none-eabi-ld --entry=start -T fuzix.ld` | (none, ELF image) | (gcc libc) |
 | `armm0` | gcc  | `arm-none-eabi-gcc` (via **Pico SDK**) | Pico SDK linker script | `.uf2` (`pico_add_extra_outputs`) | Pico SDK libs |
 | `z80u`  | fcc  | `fcc -mz80`  | `ldz80`  | `pack85`  | `libz80.a`  |
+| `z80`   | sdcc | `sdcc -mz80` | `sdldz80` | `makebin` + `binman` | `z80.lib` |
 | `pdp11` | gcc  | `pdp11-aout-gcc` | `pdp11-aout-ld -T fuzix.ld` | `objcopy -O binary` | (gcc libc) |
 | `i8086` | gcc  | `ia16-elf-gcc`   | `ia16-elf-ld -T fuzix.ld`   | (none, ELF image)   | (gcc libc) |
 
@@ -143,6 +151,13 @@ cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80u.cmake \
       -DFUZIX_TOOLCHAIN_PREFIX=$PWD/toolchain/fake
 cmake --build build
 
+# classic Z80 (SDCC), John Winans 2063 board: kernel + bootable SD disk image.
+# The kernel builds with SDCC (./toolchain/sdcc); the fcc userland (./toolchain/fcc)
+# populates the root fs, so both toolchains are used.
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80.cmake \
+      -DFUZIX_CPU=z80 -DFUZIX_PLATFORM=2063 -DFUZIX_ROOTFS=ON
+cmake --build build --target diskimage    # -> build/images/disk.img (20MB, boot + kernel + populated fs)
+
 # boot floppy + root disk (either target)
 cmake --build build --target diskimage
 # -> build/images/boot.dsk, build/images/drivep.dsk
@@ -168,6 +183,10 @@ cmake --build build
 # 8070 / rcbus-8070   (ld8070 emits fuzix.bin directly, no pack85)
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-8070.cmake \
       -DFUZIX_CPU=8070 -DFUZIX_PLATFORM=rcbus-8070
+
+# 6800 / rcbus-6800   (Motorola 6800, big-endian; ld6800 -> fuzix.bin, no pack85)
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-6800.cmake \
+      -DFUZIX_CPU=6800 -DFUZIX_PLATFORM=rcbus-6800
 cmake --build build
 
 # z8 / rcbus-z8   (ldz8 emits fuzix.bin directly, no pack85)
@@ -253,7 +272,7 @@ Pass `all` to also build the userland and pack the disk/flash images; give one o
 | Option                     | Default     | Meaning |
 |----------------------------|-------------|----------------------------------------------|
 | `FUZIX_CPU`                | `i8080`     | Target CPU: `i8080`, `i8085`, `8070`, `z8`, `super8`, `z80u`, `pdp11`, `i8086`, `armm4` or `armm0` |
-| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `rcbus-8080`, `rcbus-8085`, `rcbus-8070`, `rcbus-z8`, `rcbus-super8`, `rcbus-80c188`, `tm4c129x`, `rpipico`, `pdp11`, `ibmpc`, or any of the 19 `z80u` boards (`z80pack`, `aqplus`, `nascom`, `z80-mbc2`, … — see ARCHITECTURE.md). The right memory manager / multiprocess default is selected per board, so a bare `-DFUZIX_PLATFORM=<b>` just works. |
+| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `rcbus-8080`, `rcbus-8085`, `rcbus-8070`, `rcbus-6800`, `rcbus-z8`, `rcbus-super8`, `rcbus-80c188`, `2063`, `tm4c129x`, `rpipico`, `pdp11`, `ibmpc`, or any of the 19 `z80u` boards (`z80pack`, `aqplus`, `nascom`, `z80-mbc2`, … — see ARCHITECTURE.md). The right memory manager / multiprocess default is selected per board, so a bare `-DFUZIX_PLATFORM=<b>` just works. |
 | `FUZIX_Z80U_MODE`          | `normal`    | z80u low-level: `normal` (common RAM) or `thunked` |
 | `FUZIX_MM`                 | `bankfixed` | Memory manager (see below)                   |
 | `FUZIX_MEMALLOC`           | `none`      | User allocator: `none` or `malloc`           |

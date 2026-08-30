@@ -24,6 +24,8 @@
 #                    usercpu  kind  machine     opt              lerr
 set(_ul_i8080_row    "8080"   fcc   "-m8080"    "-Os"            "")
 set(_ul_z80u_row     "z80"    fcc   "-mz80"     "-O"             "")
+set(_ul_z80_row      "z80"    fcc   "-mz80"     "-O"             "")
+set(_ul_6800_row     "6800"   fcc   "-m6800"    "-Os"            "-X")   # big-endian
 set(_ul_pdp11_row    "pdp11"  gcc   ""          "-Os"            "-X")
 set(_ul_i8086_row    "8086"   gcc   ""          "-march=i8086 -Os" "-X")
 set(_ul_armm0_row    "armm0"  gcc   ""          "-std=c99 -mcpu=Cortex-M0plus -ffunction-sections -fdata-sections -fno-strict-aliasing -fomit-frame-pointer -fno-builtin -Os" "-X")
@@ -44,7 +46,18 @@ list(GET _ul_${FUZIX_CPU}_row 3 USER_OPT)
 list(GET _ul_${FUZIX_CPU}_row 4 USER_LIBERROR_FLAG)
 separate_arguments(USER_OPT UNIX_COMMAND "${USER_OPT}")
 
-set(USER_CC "${FUZIX_CC}")                       # same driver as the kernel build
+# Userland compiler driver. Normally the same driver as the kernel build, but
+# the fcc userland is toolchain-independent of the kernel: the classic Z80 port
+# builds its kernel with SDCC (FUZIX_CC=sdcc) yet its userland is still the
+# Fuzix Compiler Kit z80 build, so fall back to a dedicated fcc prefix when the
+# kernel driver is not fcc.
+if(USER_KIND STREQUAL "fcc" AND NOT FUZIX_CC MATCHES "/fcc$")
+    set(USER_FCC_PREFIX "${CMAKE_SOURCE_DIR}/toolchain/fcc"
+        CACHE PATH "Fuzix Compiler Kit prefix for the fcc userland (kernel uses a different toolchain)")
+    set(USER_CC "${USER_FCC_PREFIX}/bin/fcc")
+else()
+    set(USER_CC "${FUZIX_CC}")                   # same driver as the kernel build
+endif()
 
 # Archiver: gcc targets need their cross ar. For the fcc targets a GNU-style
 # host `ar` works on the custom-format objects, but Apple's /usr/bin/ar refuses

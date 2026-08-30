@@ -52,6 +52,8 @@ cpu_of_platform() {
 toolchain_kind() {
     if grep -q 'FUZIX_TOOLCHAIN_KIND "gcc"' "cmake/toolchain-$1.cmake" 2>/dev/null; then
         echo gcc
+    elif grep -q 'FUZIX_TOOLCHAIN_KIND "sdcc"' "cmake/cpu-$1.cmake" 2>/dev/null; then
+        echo sdcc
     else
         echo fcc
     fi
@@ -64,6 +66,10 @@ compiler_binary() {
         echo fcc
         return
     fi
+    if [ "$kind" = sdcc ]; then
+        echo sdcc
+        return
+    fi
     # gcc: pull the quoted FUZIX_CC value, drop ${...} expansions, take basename.
     grep -oE 'set\(FUZIX_CC[^)]*' "cmake/toolchain-$cpu.cmake" \
         | grep -oE '"[^"]+"' | head -1 | tr -d '"' \
@@ -73,7 +79,7 @@ compiler_binary() {
 # prefix_var <cpu> <kind>  ->  the -D variable that points at the toolchain.
 prefix_var() {
     local cpu="$1" kind="$2"
-    if [ "$kind" = fcc ]; then
+    if [ "$kind" = fcc ] || [ "$kind" = sdcc ]; then
         echo FUZIX_TOOLCHAIN_PREFIX
         return
     fi
@@ -245,7 +251,8 @@ build_one() {
     #   fcc  -> prefix is the install ROOT   (compiler lives at <root>/bin/<bin>)
     #   gcc  -> prefix is the bin DIRECTORY  (compiler lives at <dir>/<bin>)
     case "$cc" in *"/toolchain/fake/"*) realtag=fake;; *) realtag=real;; esac
-    if [ "$kind" = fcc ]; then
+    if [ "$kind" = fcc ] || [ "$kind" = sdcc ]; then
+        # compiler at <root>/bin/<bin>; prefix is the install ROOT.
         prefix="$(dirname "$(dirname "$cc")")"
     else
         prefix="$(dirname "$cc")"

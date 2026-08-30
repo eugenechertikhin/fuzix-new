@@ -1,8 +1,8 @@
 # Supported CPUs / platforms
 
-FUZIX supports **30 CPU ports** in total. This `fuzix-new` CMake tree currently ports **ten** of them — the Intel **8080** (`i8080`, boards [`v8080`](kernel/platform/v8080/), [`rcbus-8080`](kernel/platform/rcbus-8080/)), the Intel **8085** (`i8085`, board [`rcbus-8085`](kernel/platform/rcbus-8085/)), the National **INS8070** (`8070`, board [`rcbus-8070`](kernel/platform/rcbus-8070/)), the **Zilog Z8** (`z8`, board [`rcbus-z8`](kernel/platform/rcbus-z8/)), the **Zilog Super8** (`super8`, board [`rcbus-super8`](kernel/platform/rcbus-super8/)) and the new-compiler **Z80** (`z80u`, **19 boards** — [`z80pack`](kernel/platform/z80pack/), [`z80-mbc2`](kernel/platform/z80-mbc2/), [`nascom`](kernel/platform/nascom/), [`rc2014-tiny`](kernel/platform/rc2014-tiny/) and 15 more, see the Platforms table), all built with the Fuzix Compiler Kit (`fcc`), plus the **PDP-11** (`pdp11`, board [`pdp11`](kernel/platform/pdp11/)) and the Intel **8086/80C188** (`i8086`, boards [`ibmpc`](kernel/platform/ibmpc/), [`rcbus-80c188`](kernel/platform/rcbus-80c188/)) on a standard gcc cross toolchain (`pdp11-aout-gcc` / `ia16-elf-gcc`), and **ARM Cortex-M4** (`armm4`, board [`tm4c129x`](kernel/platform/tm4c129x/)) on `arm-none-eabi-gcc`, and **ARM Cortex-M0+ / RP2040** (`armm0`, board [`rpipico`](kernel/platform/rpipico/)) built with the **Raspberry Pi Pico SDK** (integrated into this CMake) into a `.uf2`. The remaining 20 are recorded here as the porting roadmap.
+FUZIX supports **30 CPU ports** in total. This `fuzix-new` CMake tree currently ports **twelve** of them — the Intel **8080** (`i8080`, boards [`v8080`](kernel/platform/v8080/), [`rcbus-8080`](kernel/platform/rcbus-8080/)), the Intel **8085** (`i8085`, board [`rcbus-8085`](kernel/platform/rcbus-8085/)), the National **INS8070** (`8070`, board [`rcbus-8070`](kernel/platform/rcbus-8070/)), the Motorola **6800** (`6800`, board [`rcbus-6800`](kernel/platform/rcbus-6800/)), the **Zilog Z8** (`z8`, board [`rcbus-z8`](kernel/platform/rcbus-z8/)), the **Zilog Super8** (`super8`, board [`rcbus-super8`](kernel/platform/rcbus-super8/)) and the new-compiler **Z80** (`z80u`, **19 boards** — [`z80pack`](kernel/platform/z80pack/), [`z80-mbc2`](kernel/platform/z80-mbc2/), [`nascom`](kernel/platform/nascom/), [`rc2014-tiny`](kernel/platform/rc2014-tiny/) and 15 more, see the Platforms table), all built with the Fuzix Compiler Kit (`fcc`), the classic **Z80** (`z80`, board [`2063`](kernel/platform/2063/)) built with **SDCC** (`sdcc`/`sdasz80`/`sdldz80`), plus the **PDP-11** (`pdp11`, board [`pdp11`](kernel/platform/pdp11/)) and the Intel **8086/80C188** (`i8086`, boards [`ibmpc`](kernel/platform/ibmpc/), [`rcbus-80c188`](kernel/platform/rcbus-80c188/)) on a standard gcc cross toolchain (`pdp11-aout-gcc` / `ia16-elf-gcc`), and **ARM Cortex-M4** (`armm4`, board [`tm4c129x`](kernel/platform/tm4c129x/)) on `arm-none-eabi-gcc`, and **ARM Cortex-M0+ / RP2040** (`armm0`, board [`rpipico`](kernel/platform/rpipico/)) built with the **Raspberry Pi Pico SDK** (integrated into this CMake) into a `.uf2`. The remaining 20 are recorded here as the porting roadmap.
 
-All CPU ports live under [`kernel/cpu/`](kernel/cpu/), one directory per CPU. The links below point at those local directories — [`i8080`](kernel/cpu/i8080/), [`i8085`](kernel/cpu/i8085/), [`8070`](kernel/cpu/8070/), [`z8`](kernel/cpu/z8/), [`super8`](kernel/cpu/super8/), [`z80u`](kernel/cpu/z80u/), [`pdp11`](kernel/cpu/pdp11/), [`i8086`](kernel/cpu/i8086/), [`armm4`](kernel/cpu/armm4/) and [`armm0`](kernel/cpu/armm0/) exist today; the rest will be created as each port lands.
+All CPU ports live under [`kernel/cpu/`](kernel/cpu/), one directory per CPU. The links below point at those local directories — [`i8080`](kernel/cpu/i8080/), [`i8085`](kernel/cpu/i8085/), [`8070`](kernel/cpu/8070/), [`z8`](kernel/cpu/z8/), [`super8`](kernel/cpu/super8/), [`z80u`](kernel/cpu/z80u/), [`z80`](kernel/cpu/z80/), [`6800`](kernel/cpu/6800/), [`pdp11`](kernel/cpu/pdp11/), [`i8086`](kernel/cpu/i8086/), [`armm4`](kernel/cpu/armm4/) and [`armm0`](kernel/cpu/armm0/) exist today; the rest will be created as each port lands.
 
 Legend: ✅ ported into `fuzix-new` · ⬜ planned (directory to be created).
 
@@ -22,7 +22,7 @@ Legend: ✅ ported into `fuzix-new` · ⬜ planned (directory to be created).
 
 | CPU                                   | Directory                                      | Status   |
 |---------------------------------------|------------------------------------------------|----------|
-| Z80                                   | [`kernel/cpu/z80/`](kernel/cpu/z80/)           | ⬜        |
+| Z80 (classic / SDCC)                  | [`kernel/cpu/z80/`](kernel/cpu/z80/)           | ✅ ported |
 | Z80U (new-compiler / thunked variant) | [`kernel/cpu/z80u/`](kernel/cpu/z80u/)         | ✅ ported |
 | Z180                                  | [`kernel/cpu/z180/`](kernel/cpu/z180/)         | ⬜        |
 | Z280                                  | [`kernel/cpu/z280/`](kernel/cpu/z280/)         | ⬜        |
@@ -40,7 +40,7 @@ Legend: ✅ ported into `fuzix-new` · ⬜ planned (directory to be created).
 
 | CPU                                   | Directory                                      | Status   |
 |---------------------------------------|------------------------------------------------|----------|
-| 6800                                  | [`kernel/cpu/6800/`](kernel/cpu/6800/)         | ⬜        |
+| 6800                                  | [`kernel/cpu/6800/`](kernel/cpu/6800/)         | ✅ ported |
 | 68HC11                                | [`kernel/cpu/68hc11/`](kernel/cpu/68hc11/)     | ⬜        |
 | 6809                                  | [`kernel/cpu/6809/`](kernel/cpu/6809/)         | ⬜        |
 
@@ -80,9 +80,9 @@ Legend: ✅ ported into `fuzix-new` · ⬜ planned (directory to be created).
 | Family                 | CPUs                                 | Count  |
 |------------------------|--------------------------------------|--------|
 | Intel 8080             | i8080 ✅, i8085 ✅, i8086 ✅         | 3      |
-| Zilog Z80              | z80, z80u ✅, z180, z280, ez80_z80, r2k | 6      |
+| Zilog Z80              | z80 ✅, z80u ✅, z180, z280, ez80_z80, r2k | 6      |
 | Zilog Z8               | z8 ✅, super8 ✅                     | 2      |
-| Motorola 6800          | 6800, 68hc11, 6809                   | 5      |
+| Motorola 6800          | 6800 ✅, 68hc11, 6809                | 5      |
 | Motorola 68000         | 68000                                | 1      |
 | ARM                    | armm0 ✅, armm4 ✅                   | 2      |
 | Xtensa                 | esp8266, esp32                       | 2      |
@@ -154,7 +154,7 @@ Some families have enough board-specific detail to live in their own documents:
 | ✅ **v8080**        | 8080     | fcc             | tested       | 8080 development on Z80Pack                        |
 | ✅ **rcbus-8085**   | 8085     | fcc             | tested       | RCBus with 80C85, 8/56K banking                    |
 | ✅ **rcbus-8070**   | 8070     | fcc             | WIP          | RCBus with INS8070 CPU                             |
-| rcbus-6800          | 6800     | fcc             | WIP          | RCBus with 6800 CPU                                |
+| ✅ **rcbus-6800**   | 6800     | fcc (-m6800)    | builds       | RCBus with 6800 CPU; loader + 40MB IDE disk, big-endian userland |
 | ✅ **rcbus-z8**     | z8       | fcc             | early WIP    | RCBus with Zilog Z8                                |
 | ✅ **rcbus-super8** | super8   | fcc             | WIP          | RCBus with Zilog Super8                            |
 | ✅ **aqplus**       | z80u     | fcc (-mz80)     | WIP          | Mattel Aquarius+ (Z80)                             |
@@ -176,7 +176,7 @@ Some families have enough board-specific detail to live in their own documents:
 | ✅ **z80pack**      | z80u     | fcc (-mz80)     | tested       | Z80Pack virtual Z80 platform                       |
 | ✅ **z80retro**     | z80u     | fcc (-mz80)     | test pending | Peter Wilson's Z80Retro                            |
 | ✅ **zrc**          | z80u     | fcc (-mz80)     | tested       | Bill Shen's ZRC platform                           |
-| 2063                | z80      | sdcc            | tested       | John Winans Z80 Retro system                       |
+| ✅ **2063**         | z80      | sdcc            | builds       | John Winans Z80 Retro system (SD boot, VDP console, SIO) |
 | adam                | z80      | sdcc            | WIP          | Coleco Adam (Z80)                                  |
 | amprolb             | z80      | sdcc            | tested       | The legendary Ampro Littleboard                    |
 | c128-z80            | z80      | sdcc            | WIP          | Commodore 128 Z80 side                             |

@@ -45,6 +45,32 @@ function(fuzix_compile src)
             DEPENDS "${_abs}" ${FUZIX_EXTRA_DEPENDS}
             COMMENT "${FUZIX_CC_LABEL}  ${src}"
             VERBATIM)
+    elseif(FUZIX_TOOLCHAIN_KIND STREQUAL "sdcc")
+        # SDCC (classic Z80 path): .s assembles with sdasz80, .c compiles with
+        # sdcc.  Both emit a relocatable .rel object (kept under the .o name so
+        # the shared FUZIX_OBJECTS accumulator/link path is unchanged).  Segment
+        # placement (--codeseg CODE2 / --constseg DISCARD / ...) is passed per
+        # source through EXTRA, transcribing the upstream top-Makefile segment
+        # source lists.
+        get_filename_component(_ext "${_abs}" EXT)
+        if(_ext STREQUAL ".s" OR _ext STREQUAL ".asm")
+            add_custom_command(
+                OUTPUT  "${_obj}"
+                COMMAND "${FUZIX_AS}" ${FUZIX_ASOPTS} ${FUZIX_ASINCLUDES}
+                        -o "${_obj}" "${_abs}"
+                DEPENDS "${_abs}" ${FUZIX_EXTRA_DEPENDS}
+                COMMENT "sdasz80  ${src}"
+                VERBATIM)
+        else()
+            add_custom_command(
+                OUTPUT  "${_obj}"
+                COMMAND "${FUZIX_CC}" ${FUZIX_SDCC_OPTS}
+                        ${FUZIX_INCLUDE_FLAGS} ${FUZIX_DEFS} ${ARG_EXTRA}
+                        -o "${_obj}" "${_abs}"
+                DEPENDS "${_abs}" ${FUZIX_EXTRA_DEPENDS}
+                COMMENT "sdcc ${FUZIX_CC_MACHINE}  ${src}"
+                VERBATIM)
+        endif()
     else()
         # Fuzix Compiler Kit (fcc): emits <basename>.o into the working dir.
         add_custom_command(

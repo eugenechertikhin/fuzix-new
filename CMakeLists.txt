@@ -73,13 +73,15 @@ set(FUZIX_SUBVERSION "\"\"" CACHE STRING "FUZIX subversion string")
 # ---------------------------------------------------------------------------
 set(FUZIX_CPU      "i8080" CACHE STRING "Target CPU: i8080 | z80u")
 set(FUZIX_PLATFORM "v8080" CACHE STRING "Target platform/board: v8080 | z80pack")
-set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 z8 super8 z80u pdp11 i8086 armm4 armm0)
+set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 6800 z8 super8 z80u z80 pdp11 i8086 armm4 armm0)
 set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS
-    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x rpipico pdp11 ibmpc
+    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-6800 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x rpipico pdp11 ibmpc
     # z80u boards
     aqplus challengeriii lobo-max80 nascom nano-z80 rc2014-tiny rcbus-tp128
     sbcv2 sbc2g sc720 z80membership z1013 zrc z80all z80-mbc2 z80retro
-    searle tomssbc simple80)
+    searle tomssbc simple80
+    # classic SDCC z80 boards
+    2063)
 
 # Toolchain kind: "fcc" (Fuzix Compiler Kit, ld8080/ldz80 + pack85) or "gcc"
 # (standard gcc + linker script + objcopy, e.g. pdp11). Set by the toolchain
@@ -133,7 +135,7 @@ elseif(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|rcbus
     set(_mm_default "simple")     # swap-only boards
 elseif(FUZIX_PLATFORM MATCHES "^(aqplus|z80retro)$")
     set(_mm_default "bank16k")    # 4x16K banked boards
-elseif(FUZIX_PLATFORM STREQUAL "rcbus-8070")
+elseif(FUZIX_PLATFORM MATCHES "^(rcbus-8070|rcbus-6800)$")
     set(_mm_default "bank16kfc")  # 4x16K flash-friendly banked
 elseif(FUZIX_PLATFORM STREQUAL "tm4c129x")
     set(_mm_default "flat")       # ARM Cortex-M flat address space
@@ -359,6 +361,22 @@ if(NOT FUZIX_PLATFORM STREQUAL "rpipico" OR FUZIX_USERLAND_ONLY)
     # Host-side standalone utilities (mkfs/fsck/ucp/... ). Built via `tools` target.
     include(HostTools)
 
+    # Board-specific root fs size. The 2063 disk image places the root fs in the
+    # first partition of parttab.20M, which is 16385 blocks (~8MB) - the generic
+    # 65535-block default would overflow the partition, so cap it here. Set as a
+    # (non-FORCE) cache default before RootFS so an explicit -DFUZIX_ROOTFS_BSIZE
+    # still wins.
+    if(FUZIX_PLATFORM STREQUAL "2063")
+        set(FUZIX_ROOTFS_BSIZE "16384" CACHE STRING "Root fs block count (mkfs fsize)")
+        # Populate the root fs with the programs the `bin` target builds.
+        set(FUZIX_ROOTFS_GEN_BIN ON CACHE BOOL "Install all built userland executables into /bin")
+    endif()
+    # rcbus-6800 boots from a 40MB IDE disk whose root partition is 65536 blocks
+    # (32MB), so the default 65535-block fs fits; just populate /bin.
+    if(FUZIX_PLATFORM STREQUAL "rcbus-6800")
+        set(FUZIX_ROOTFS_GEN_BIN ON CACHE BOOL "Install all built userland executables into /bin")
+    endif()
+
     # Root filesystem image (target: rootfs). May override FUZIX_FILESYS_IMG below.
     include(RootFS)
 
@@ -454,6 +472,20 @@ elseif(LINK_STYLE STREQUAL "arm-elf")
                    "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
     set(_link_dep "${LINK_SCRIPT}")
     set(_link_comment "arm-ld -T --entry=start -> fuzix.elf")
+elseif(LINK_STYLE STREQUAL "sdcc-ihx")
+    # sdcc/z80: sdldz80 + .lnk -> Intel HEX, then makebin + binman -> fuzix.bin.
+    set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
+    set(BINMAN_BIN  "${CMAKE_BINARY_DIR}/tools/binman")
+    add_custom_command(
+        OUTPUT  "${BINMAN_BIN}"
+        COMMAND "${HOSTCC}" -O2 -o "${BINMAN_BIN}" "${CMAKE_SOURCE_DIR}/tools/binman.c"
+        DEPENDS "${CMAKE_SOURCE_DIR}/tools/binman.c"
+        COMMENT "host cc  tools/binman")
+    string(REPLACE ";" " " LINK_SDCC_BASES_STR "${LINK_SDCC_BASES}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/link-image-sdcc.sh.in"
+                   "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
+    set(_link_dep "${BINMAN_BIN}")
+    set(_link_comment "sdldz80 + makebin + binman -> fuzix.bin")
 elseif(LINK_STYLE STREQUAL "fcc-raw")
     # fcc/z8: ldz8 emits the loadable binary directly, no pack85 step.
     string(REPLACE ";" " " LINK_FLAGS_STR "${LINK_FLAGS}")
@@ -527,7 +559,28 @@ elseif(DISKIMAGE_STYLE STREQUAL "rootdisk")
     add_dependencies(diskimage bin tools)
     set(DISKIMAGE_SKIP_KERNEL_DEP ON)
 else()
-    if(DISKIMAGE_STYLE STREQUAL "rcbus-ide")
+    if(DISKIMAGE_STYLE STREQUAL "rcbus-6800")
+        # Motorola 6800 RCBus: loader + parttab.40M + fs + kernel, plus an
+        # idehdr-prefixed emulator image.
+        if(NOT FUZIX_PARTTAB)
+            set(FUZIX_PARTTAB "${CMAKE_SOURCE_DIR}/tools/filesystem-src/parttab.40M")
+        endif()
+        set(FUZIX_IDEHDR "${CMAKE_SOURCE_DIR}/tools/filesystem-src/idehdr.40M")
+        configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-rcbus-6800.sh.in"
+                       "${CMAKE_BINARY_DIR}/diskimage.sh" @ONLY)
+        set(_diskimage_dep "${PLATFORM_DIR}/loader.S")
+        set(_diskimage_comment "Building loader + 40MB IDE disk.img")
+    elseif(DISKIMAGE_STYLE STREQUAL "2063")
+        # Classic SDCC Z80 SD image: assemble boot.s, dd parttab + fs + kernel.
+        set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
+        if(NOT FUZIX_PARTTAB)
+            set(FUZIX_PARTTAB "${CMAKE_SOURCE_DIR}/tools/filesystem-src/parttab.20M")
+        endif()
+        configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-2063.sh.in"
+                       "${CMAKE_BINARY_DIR}/diskimage.sh" @ONLY)
+        set(_diskimage_dep "${PLATFORM_DIR}/boot.s")
+        set(_diskimage_comment "Building boot.bin + SD disk.img")
+    elseif(DISKIMAGE_STYLE STREQUAL "rcbus-ide")
         configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-rcbus-ide.sh.in"
                        "${CMAKE_BINARY_DIR}/diskimage.sh" @ONLY)
         set(_diskimage_dep "${PLATFORM_DIR}/loader.S")

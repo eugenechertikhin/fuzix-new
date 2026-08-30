@@ -39,6 +39,24 @@ find_program(PYTHON3 NAMES python3 python)
 set(_userland_lib_dir "${CMAKE_BINARY_DIR}/userland/lib")
 set(_userland_bin_dir "${CMAKE_BINARY_DIR}/userland/bin")
 
+# Optionally generate an install package listing every executable the `bin`
+# target actually built, so the root fs is populated with exactly the compiled
+# programs (used by boards like 2063 that want a self-contained populated fs
+# without hand-maintaining which of the upstream program packages match the
+# curated binary set). The package is written into a dedicated dir that is added
+# as a --search root; a prestep in the rootfs command regenerates it.
+option(FUZIX_ROOTFS_GEN_BIN "Install all built userland executables into /bin" OFF)
+set(_rootfs_gen_pre "")
+set(_rootfs_gen_search "")
+if(FUZIX_ROOTFS_GEN_BIN)
+    set(_genpkg_dir "${ROOTFS_DIR}/genpkg")
+    file(MAKE_DIRECTORY "${_genpkg_dir}")
+    set(_rootfs_gen_pre
+        COMMAND /bin/sh "${FSSRC}/gen-binpkg.sh"
+                "${_userland_bin_dir}" "${_genpkg_dir}/fuzix-genbin.pkg" genbin)
+    set(_rootfs_gen_search --search "${_genpkg_dir}")
+endif()
+
 # Script arguments assembled from the options above.
 set(_rootfs_args
     --version "${FUZIX_VERSION}"
@@ -49,7 +67,8 @@ set(_rootfs_args
     --fsck "${TOOLOUT}/fsck"
     --search "."
     --search "${_userland_lib_dir}"
-    --search "${_userland_bin_dir}")
+    --search "${_userland_bin_dir}"
+    ${_rootfs_gen_search})
 if(FUZIX_ROOTFS_PKG)
     list(APPEND _rootfs_args -p "${FUZIX_ROOTFS_PKG}")
 endif()
@@ -67,6 +86,7 @@ file(GLOB _rootfs_deps
 if(PYTHON3)
     add_custom_command(
         OUTPUT  "${ROOTFS_IMG}"
+        ${_rootfs_gen_pre}
         COMMAND "${PYTHON3}" "${ROOTFS_PY}" ${_rootfs_args}
         WORKING_DIRECTORY "${FSSRC}"
         DEPENDS "${TOOLOUT}/mkfs" "${TOOLOUT}/ucp" "${TOOLOUT}/fsck"
