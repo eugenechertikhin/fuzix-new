@@ -6,7 +6,10 @@
 # image directly (no objcopy) - see cmake/link-image-8086.sh.in.
 #
 # This port is build-testing only upstream (no loader, no task switching, no
-# usable drivers yet), so there is no disk-image packaging rule.
+# usable drivers yet), so there is no bootable floppy. We still package the root
+# half of v8080's diskimage rule: a FUZIX filesystem populated with the i8086
+# userland (`bin`) as the hda disk image (DISKIMAGE_STYLE=rootdisk, see
+# cmake/diskimage-ibmpc.sh.in), built by the `diskimage` target.
 #
 # The 8086 banking memory manager (mm/bank8086.c, CONFIG_BANK_8086) is selected
 # through FUZIX_MM=bank8086. Upstream also links mm/simple.c, but without
@@ -15,8 +18,9 @@
 
 # Linker script + no pack85-style origin flags.
 set(LINK_SCRIPT "${KDIR}/platform/ibmpc/fuzix.ld")
-# Build-testing only: no boot/disk image packaging upstream.
-set(DISKIMAGE_STYLE "none")
+# No boot sector upstream, but we still build a populated root disk (hda) image
+# from the userland - see the "rootdisk" branch of the diskimage section.
+set(DISKIMAGE_STYLE "rootdisk")
 
 # --- Platform + CPU low level ---
 fuzix_compile(kernel/platform/ibmpc/crt0.S)          # FIRST (STARTUP in fuzix.ld)
@@ -67,6 +71,7 @@ fuzix_compile(kernel/core/vt.c)                      # CONFIG_VT (console video)
 fuzix_compile(kernel/platform/ibmpc/bioscon.c)
 fuzix_compile(kernel/platform/ibmpc/biosvid.S)
 fuzix_compile(kernel/${MM_SOURCE})                   # bank8086 (CONFIG_BANK_8086)
+fuzix_compile(kernel/${MEMALLOC_SOURCE})             # memalloc_none (_memalloc/_memfree; bank8086 doesn't define them)
 fuzix_compile(kernel/platform/ibmpc/8259a.c)
 
 # --- CPU user copy + platform tty/libc ---

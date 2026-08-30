@@ -502,6 +502,30 @@ if(DISKIMAGE_STYLE STREQUAL "none")
         COMMAND ${CMAKE_COMMAND} -E echo
                 "diskimage: not available for platform '${FUZIX_PLATFORM}' (only fuzix.bin is produced)"
         VERBATIM)
+elseif(DISKIMAGE_STYLE STREQUAL "rootdisk")
+    # No boot sector (ibmpc): package just a populated root filesystem as the
+    # hda disk image (mkfs + ucp + fsck), mirroring v8080's drivep half. Pulls
+    # the built userland from the `bin` target's output dir.
+    set(MKFS_BIN "${CMAKE_BINARY_DIR}/tools/mkfs")
+    set(UCP_BIN  "${CMAKE_BINARY_DIR}/tools/ucp")
+    set(FSCK_BIN "${CMAKE_BINARY_DIR}/tools/fsck")
+    set(ETC_DIR  "${CMAKE_SOURCE_DIR}/tools/filesystem-src/etc-files")
+    set(DISKIMAGE_FS_ISIZE "512")
+    set(DISKIMAGE_FS_BSIZE "65535")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-ibmpc.sh.in"
+                   "${CMAKE_BINARY_DIR}/diskimage.sh" @ONLY)
+    add_custom_target(diskimage
+        COMMAND /bin/sh "${CMAKE_BINARY_DIR}/diskimage.sh"
+        DEPENDS "${CMAKE_BINARY_DIR}/diskimage.sh"
+        COMMENT "Building hd0.img (root fs populated with the i8086 userland)"
+        VERBATIM)
+    # The disk image is a filesystem built from the userland + host fs tools, so
+    # build them first. It deliberately does NOT depend on the kernel: ibmpc is
+    # upstream build-testing-only (its 8086 MM / exec paths do not yet compile
+    # with a real toolchain), so the image is the userland root disk; the script
+    # copies fuzix.elf alongside only if the kernel happens to be built.
+    add_dependencies(diskimage bin tools)
+    set(DISKIMAGE_SKIP_KERNEL_DEP ON)
 else()
     if(DISKIMAGE_STYLE STREQUAL "rcbus-ide")
         configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-rcbus-ide.sh.in"
@@ -523,7 +547,9 @@ else()
         COMMENT "${_diskimage_comment}"
         VERBATIM)
 endif()
-add_dependencies(diskimage fuzix)
+if(NOT DISKIMAGE_SKIP_KERNEL_DEP)
+    add_dependencies(diskimage fuzix)
+endif()
 
 # If the root fs is built here, make diskimage build it first.
 if(FUZIX_ROOTFS_FEEDS_DISKIMAGE)

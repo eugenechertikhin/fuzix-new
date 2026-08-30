@@ -354,16 +354,35 @@ static int data_change(uint8_t dsize)
 /* Called from execve when we exec a process. Kill off any old map and
    produce a new one. If we fail keep the old map and execve can return
    into it with an error. As we are a split I/D system with stacks this
-   call is different to the simple 8bit one */
-int pagemap_realloc(usize_t csize, usize_t dsize, usize_t ssize)
+   call is different to the simple 8bit one.
+
+   The kernel interface is pagemap_realloc(struct exec *hdr, usize_t size):
+   exec16 does not split I/D itself and hands us the total flat request in
+   'size' (top - MAPBASE), leaving the split to us (see the note in
+   syscall_exec16.c). We work the code/data/stack split out from the 16-bit
+   a.out header: a_text/a_data/a_bss are byte counts. Code gets its own
+   segment; data+bss go in the data segment, and whatever is left of the
+   request becomes stack/brk growth reserved at the top of that segment. */
+int pagemap_realloc(struct exec *hdr, usize_t size)
 {
 	struct proc_map *m = (struct proc_map *)udata.u_page2;
 	static struct proc_map tmp;
 	int err = 0;
+	uint8_t csize, dsize, ssize;
+	usize_t want;
 
-	csize = PAGES_IN(csize);
-	dsize = PAGES_IN(dsize);
-	ssize = PAGES_IN(ssize);
+	csize = PAGES_IN(hdr->a_text);
+	dsize = PAGES_IN((usize_t)hdr->a_data + hdr->a_bss);
+	want = PAGES_IN(size);			/* total pages asked for */
+	/* Remainder of the request (over code+data+bss) is stack/heap space;
+	   guarantee at least one page of stack. */
+	if (want > (usize_t)csize + dsize)
+		ssize = want - csize - dsize;
+	else
+		ssize = 1;
+	/* The data segment holds data+bss+stack and must fit one 64K bank. */
+	if ((usize_t)dsize + ssize > PAGES_64K)
+		return ENOMEM;
 
 	memcpy(&tmp, m, sizeof(tmp));
 	claim_regions(m, 0);	/* Free our regions */
@@ -372,7 +391,7 @@ int pagemap_realloc(usize_t csize, usize_t dsize, usize_t ssize)
 		err = ENOMEM;
 	}
 	claim_regions(m, udata.u_page);
-	udata.u_ptab->p_size = (csize + dsize + ssize) << (PAGESHIFT - 10);
+	udata.u_ptab->p_size = ((usize_t)csize + dsize + ssize) << (PAGESHIFT - 10);
 	return err;
 }
 
@@ -457,10 +476,10 @@ void fork_copy(ptptr p)
 	}
 	else
 #endif
-	copy_pages(child->m_dbase, parent->m_dbase, parent->m_dsize);
+	copy_pages(child_m->dbase, parent_m->dbase, parent_m->dsize);
 	/* This last one will need to be reworked once we've got shared
 	   code segments */
-	copy_pages(child->m_cbase, parent->m_cbase, parent->m_csize);
+	copy_pages(child_m->cbase, parent_m->cbase, parent_m->csize);
 }
 
 

@@ -1,4 +1,10 @@
-STARTUP(crt0.o)
+/*
+ * No STARTUP(crt0.o): the CMake build passes every object explicitly on the ld
+ * command line with crt0.o FIRST (see platform-ibmpc.cmake), so crt0's .text is
+ * already at the start of .text.  STARTUP() would instead look for a file
+ * literally named crt0.o on the search path (absent here -> "cannot find
+ * crt0.o") and, if found, link crt0 twice.
+ */
 OUTPUT_ARCH(i8086)
 
 
