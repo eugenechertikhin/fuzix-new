@@ -52,7 +52,18 @@ set(USER_CC "${FUZIX_CC}")                       # same driver as the kernel bui
 # and leaves an empty library), so on macOS fall back to the bundled portable
 # GNU-format archiver. Override with -DUSER_AR=... for a real GNU ar.
 if(USER_KIND STREQUAL "gcc")
-    string(REPLACE "gcc" "ar" _derived_ar "${FUZIX_CC}")
+    # Rewrite ONLY the tool basename (ia16-elf-gcc -> ia16-elf-ar), not the whole
+    # path: the install dir usually also contains "gcc" (…/toolchain/ia16-elf-gcc/
+    # bin/…), and a blanket REPLACE would mangle it to a nonexistent
+    # …/ia16-elf-ar/bin/ia16-elf-ar.
+    get_filename_component(_cc_dir  "${FUZIX_CC}" DIRECTORY)
+    get_filename_component(_cc_name "${FUZIX_CC}" NAME)
+    string(REPLACE "gcc" "ar" _ar_name "${_cc_name}")
+    if(_cc_dir)
+        set(_derived_ar "${_cc_dir}/${_ar_name}")
+    else()
+        set(_derived_ar "${_ar_name}")
+    endif()
     set(USER_AR "${_derived_ar}" CACHE FILEPATH "Userland archiver")
 elseif(CMAKE_HOST_APPLE)
     set(USER_AR "${CMAKE_SOURCE_DIR}/cmake/portable-ar.py"

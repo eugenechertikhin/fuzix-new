@@ -28,7 +28,10 @@ cd "$WORK"
 
 # 1. Build the bootstrap loader (linked high at 0xFE00, keep the last 256 bytes).
 "$CC" -X -m8080 -c "$PLATDIR/loader.S"
-"$LD" -b -C 0xFE00 loader.o -o loader.tmp
+# -o (like all ld8080 options) MUST precede the input objects: once the linker
+# sees a non-option filename it stops parsing flags, so a trailing "-o file" is
+# taken as an input and fails with "-o: No such file or directory".
+"$LD" -b -C 0xFE00 -o loader.tmp loader.o
 dd if=loader.tmp of=loader bs=256 skip=254
 
 # 2. Kernel image without its low 256 bytes.

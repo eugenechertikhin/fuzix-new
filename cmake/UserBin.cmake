@@ -23,10 +23,12 @@
 # USER_CC_MACHINE, USER_OPT, USER_INCLUDE_FLAGS, USER_LIB_DIR, LIBC_A.
 # ===========================================================================
 
-# Userland programs are wired for the fcc CPUs (i8080, z80u) and for armm0
-# (arm-none-eabi, PIE ELF via elfexe32.ld). The other gcc CPUs (pdp11, i8086)
-# link differently (their own script) and are not wired yet.
-if(NOT USER_KIND STREQUAL "fcc" AND NOT USERCPU STREQUAL "armm0")
+# Userland programs are wired for the fcc CPUs (i8080, z80u), for armm0
+# (arm-none-eabi, PIE ELF via elfexe32.ld) and for i8086 (ia16-elf, MZ/msdos
+# image via 8086.ld + libgcc). The remaining gcc CPU (pdp11) links differently
+# (its own script) and is not wired yet.
+if(NOT USER_KIND STREQUAL "fcc" AND NOT USERCPU STREQUAL "armm0"
+   AND NOT USERCPU STREQUAL "8086")
     add_custom_target(bin
         COMMAND ${CMAKE_COMMAND} -E echo
             "bin: userland programs not wired for '${FUZIX_CPU}' (${USER_KIND}) yet"
@@ -47,6 +49,18 @@ set(CRT0_NOSTDIO "${USER_LIB_DIR}/crt0nostdio_${USERCPU}.o")
 if(USERCPU STREQUAL "armm0")
     set(USER_CC_LABEL "arm-gcc")
     set(ELFEXE32_LD "${CMAKE_SOURCE_DIR}/lib/elfexe32.ld")
+    execute_process(
+        COMMAND "${USER_CC}" ${USER_OPT} -print-libgcc-file-name
+        OUTPUT_VARIABLE _libgcc_file OUTPUT_STRIP_TRAILING_WHITESPACE)
+    get_filename_component(LIBGCC_DIR "${_libgcc_file}" DIRECTORY)
+endif()
+
+# i8086 (gcc/ia16) links against libc8086 + libgcc through the msdos/MZ linker
+# script 8086.ld, mirroring Target/rules.8086 and lib/link/ld8086. Resolve the
+# libgcc directory from the compiler once.
+if(USERCPU STREQUAL "8086")
+    set(USER_CC_LABEL "ia16-gcc")
+    set(LD8086_SCRIPT "${CMAKE_SOURCE_DIR}/lib/link/8086.ld")
     execute_process(
         COMMAND "${USER_CC}" ${USER_OPT} -print-libgcc-file-name
         OUTPUT_VARIABLE _libgcc_file OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -159,10 +173,11 @@ function(_userbin_compile outvar prog abs_src incdir defines)
         list(APPEND _dflags "-D${d}")
     endforeach()
     if(USER_KIND STREQUAL "gcc")
-        # Standard gcc driver: -c -o, no cwd-emit.
+        # Standard gcc driver: -c -o, no cwd-emit. gcc already predefines
+        # __STDC__ (unlike fcc), so it is not injected here.
         add_custom_command(
             OUTPUT  "${_obj}"
-            COMMAND "${USER_CC}" ${USER_OPT} -D__STDC__
+            COMMAND "${USER_CC}" ${USER_OPT}
                     -Wno-int-conversion -Wno-implicit-int
                     ${_dflags} ${USER_INCLUDE_FLAGS} "-I${incdir}"
                     -c "${abs_src}" -o "${_obj}"
@@ -221,6 +236,18 @@ function(_userbin_build name outvar)
                     -o "${_app}"
             DEPENDS ${_objs} "${_crt0}" "${LIBC_A}" "${ELFEXE32_LD}"
             COMMENT "ld(arm)  ${_bin}"
+            VERBATIM)
+    elseif(USERCPU STREQUAL "8086")
+        # MZ/msdos image link (Target/rules.8086 / lib/link/ld8086):
+        # ld crt0 objs -lc8086 -lgcc -T 8086.ld -o app.
+        add_custom_command(
+            OUTPUT  "${_app}"
+            COMMAND "${FUZIX_LD}" "${_crt0}" ${_objs}
+                    "-L${USER_LIB_DIR}" ${_lflags} -lc${USERCPU}
+                    "-L${LIBGCC_DIR}" -lgcc
+                    -T "${LD8086_SCRIPT}" -o "${_app}"
+            DEPENDS ${_objs} "${_crt0}" "${LIBC_A}" "${LD8086_SCRIPT}"
+            COMMENT "ld(8086)  ${_bin}"
             VERBATIM)
     else()
         add_custom_command(

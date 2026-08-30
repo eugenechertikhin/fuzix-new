@@ -2,7 +2,7 @@
 
 FUZIX is a fusion of various elements from the assorted UZI forks and branches beaten together into some kind of semi-coherent platform and then extended from V7 to somewhere in the SYS3 to SYS5.x world with bits of POSIX thrown in for good measure. Various learnings and tricks from ELKS and from OMU also got blended in
 
-This is the rework of well-known FuzixOS project.  A CMake-driven build of the [FUZIX](https://github.com/EtchedPixels/FUZIX) kernel where the **target CPU, platform, memory manager, filesystem and device drivers are selected with build flags** instead of per-platform Makefiles.
+This is the rework of well-known FuzixOS project.  A CMake-driven build of the [FUZIX](https://codeberg.org/EtchedPixels/FUZIX) kernel where the **target CPU, platform, memory manager, filesystem and device drivers are selected with build flags** instead of per-platform Makefiles.
 
 Per-CPU settings live in `cmake/cpu-<cpu>.cmake`, per-platform link recipes in `cmake/platform-<platform>.cmake`, so more CPUs/platforms can be added later. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full roadmap of all 30 CPU ports and 132 boards, plus deep-dives on the [ZX Spectrum / Z80](docs/ZX.md) and [x86](docs/X86.md) families.
 

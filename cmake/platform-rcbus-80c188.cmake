@@ -26,6 +26,7 @@ fuzix_compile(kernel/platform/rcbus-80c188/main.c)
 fuzix_compile(kernel/core/swap.c)
 fuzix_compile(kernel/core/timer.c)
 fuzix_compile(kernel/${MM_SOURCE})                   # simple (CONFIG_SWAP_ONLY)
+fuzix_compile(kernel/${MEMALLOC_SOURCE})             # memalloc_none (_memalloc/_memfree)
 fuzix_compile(kernel/core/kdata.c)
 fuzix_compile(kernel/platform/rcbus-80c188/devices.c)
 
