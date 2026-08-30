@@ -15,7 +15,7 @@ set -e
 GEN="@SYSCALL_GEN@"
 CC="@USER_CC@"
 MACH="@USER_CC_MACHINE@"
-OPT="@USER_OPT@"
+OPT="@USER_OPT_STR@"
 KIND="@USER_KIND@"
 CPU="@USERCPU@"
 LIBS_DIR="@LIBS_DIR@"
@@ -27,7 +27,8 @@ rm -rf "$WORK/fuzix$CPU"
 mkdir -p "$WORK/fuzix$CPU" "$OBJDIR"
 
 # Bring in the checked-in dispatcher stub(s) that the generator does NOT emit.
-for d in "$LIBS_DIR/fuzix$CPU/"*.s; do
+# fcc CPUs use lowercase .s stubs; the arm (gcc) generator emits .S — accept both.
+for d in "$LIBS_DIR/fuzix$CPU/"*.s "$LIBS_DIR/fuzix$CPU/"*.S; do
     [ -e "$d" ] || continue
     cp "$d" "$WORK/fuzix$CPU/"
 done
@@ -36,9 +37,9 @@ done
 ( cd "$WORK" && "$GEN" )
 
 : > "$LIST"
-for s in "$WORK/fuzix$CPU/"*.s; do
+for s in "$WORK/fuzix$CPU/"*.s "$WORK/fuzix$CPU/"*.S; do
     [ -e "$s" ] || continue
-    base=$(basename "$s" .s)
+    base=$(basename "$s"); base=${base%.s}; base=${base%.S}
     obj="$OBJDIR/$base.o"
     if [ "$KIND" = fcc ]; then
         # fake/real fcc emit <basename>.o into the cwd, so compile from OBJDIR.

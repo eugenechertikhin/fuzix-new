@@ -23,12 +23,13 @@
 # USER_CC_MACHINE, USER_OPT, USER_INCLUDE_FLAGS, USER_LIB_DIR, LIBC_A.
 # ===========================================================================
 
-# Userland programs currently only wired for the fcc CPUs (i8080, z80u). The
-# gcc CPUs (pdp11, i8086) link differently (libgcc, -T script) - TODO.
-if(NOT USER_KIND STREQUAL "fcc")
+# Userland programs are wired for the fcc CPUs (i8080, z80u) and for armm0
+# (arm-none-eabi, PIE ELF via elfexe32.ld). The other gcc CPUs (pdp11, i8086)
+# link differently (their own script) and are not wired yet.
+if(NOT USER_KIND STREQUAL "fcc" AND NOT USERCPU STREQUAL "armm0")
     add_custom_target(bin
         COMMAND ${CMAKE_COMMAND} -E echo
-            "bin: userland programs not wired for '${FUZIX_CPU}' (${USER_KIND}) yet - only the fcc CPUs are supported so far"
+            "bin: userland programs not wired for '${FUZIX_CPU}' (${USER_KIND}) yet"
         VERBATIM)
     return()
 endif()
@@ -40,6 +41,17 @@ file(MAKE_DIRECTORY "${USER_BIN_DIR}")
 # crt0 objects produced by the `lib` target (in USER_LIB_DIR).
 set(CRT0_STDIO   "${USER_LIB_DIR}/crt0_${USERCPU}.o")
 set(CRT0_NOSTDIO "${USER_LIB_DIR}/crt0nostdio_${USERCPU}.o")
+
+# armm0 (gcc/arm) links PIE ELF binaries with ld + elfexe32.ld + libgcc, per
+# Target/rules.armm0. Resolve the libgcc directory from the compiler once.
+if(USERCPU STREQUAL "armm0")
+    set(USER_CC_LABEL "arm-gcc")
+    set(ELFEXE32_LD "${CMAKE_SOURCE_DIR}/lib/elfexe32.ld")
+    execute_process(
+        COMMAND "${USER_CC}" ${USER_OPT} -print-libgcc-file-name
+        OUTPUT_VARIABLE _libgcc_file OUTPUT_STRIP_TRAILING_WHITESPACE)
+    get_filename_component(LIBGCC_DIR "${_libgcc_file}" DIRECTORY)
+endif()
 
 # ---------------------------------------------------------------------------
 # 1. Program registry
@@ -146,14 +158,27 @@ function(_userbin_compile outvar prog abs_src incdir defines)
     foreach(d ${defines})
         list(APPEND _dflags "-D${d}")
     endforeach()
-    add_custom_command(
-        OUTPUT  "${_obj}"
-        COMMAND "${USER_CC}" -X ${USER_CC_MACHINE} -c ${USER_OPT} -D__STDC__
-                ${_dflags} ${USER_INCLUDE_FLAGS} "-I${incdir}" "${abs_src}"
-        WORKING_DIRECTORY "${_wd}"
-        DEPENDS "${abs_src}" "${LIBC_A}"
-        COMMENT "fcc ${USER_CC_MACHINE}  ${abs_src}"
-        VERBATIM)
+    if(USER_KIND STREQUAL "gcc")
+        # Standard gcc driver: -c -o, no cwd-emit.
+        add_custom_command(
+            OUTPUT  "${_obj}"
+            COMMAND "${USER_CC}" ${USER_OPT} -D__STDC__
+                    -Wno-int-conversion -Wno-implicit-int
+                    ${_dflags} ${USER_INCLUDE_FLAGS} "-I${incdir}"
+                    -c "${abs_src}" -o "${_obj}"
+            DEPENDS "${abs_src}" "${LIBC_A}"
+            COMMENT "${USER_CC_LABEL}  ${abs_src}"
+            VERBATIM)
+    else()
+        add_custom_command(
+            OUTPUT  "${_obj}"
+            COMMAND "${USER_CC}" -X ${USER_CC_MACHINE} -c ${USER_OPT} -D__STDC__
+                    ${_dflags} ${USER_INCLUDE_FLAGS} "-I${incdir}" "${abs_src}"
+            WORKING_DIRECTORY "${_wd}"
+            DEPENDS "${abs_src}" "${LIBC_A}"
+            COMMENT "fcc ${USER_CC_MACHINE}  ${abs_src}"
+            VERBATIM)
+    endif()
     set(${outvar} "${_obj}" PARENT_SCOPE)
 endfunction()
 
@@ -184,13 +209,28 @@ function(_userbin_build name outvar)
     endforeach()
 
     set(_app "${USER_BIN_DIR}/${_bin}")
-    add_custom_command(
-        OUTPUT  "${_app}"
-        COMMAND "${USER_CC}" ${USER_CC_MACHINE} -X -s "${_crt0}" ${_objs}
-                "-L${USER_LIB_DIR}" ${_lflags} -lc${USERCPU} -o "${_app}" -M
-        DEPENDS ${_objs} "${_crt0}" "${LIBC_A}"
-        COMMENT "ld${USERCPU}  ${_bin}"
-        VERBATIM)
+    if(USERCPU STREQUAL "armm0")
+        # PIE ELF link (Target/rules.armm0): ld + crt0 + libc + libgcc + elfexe32.ld.
+        add_custom_command(
+            OUTPUT  "${_app}"
+            COMMAND "${FUZIX_LD}" "${_crt0}" ${_objs}
+                    "-L${USER_LIB_DIR}" ${_lflags} -lc${USERCPU}
+                    "-L${LIBGCC_DIR}" -lgcc
+                    -pie -static -no-dynamic-linker -z max-page-size=4
+                    --no-export-dynamic -Bstatic -T "${ELFEXE32_LD}"
+                    -o "${_app}"
+            DEPENDS ${_objs} "${_crt0}" "${LIBC_A}" "${ELFEXE32_LD}"
+            COMMENT "ld(arm)  ${_bin}"
+            VERBATIM)
+    else()
+        add_custom_command(
+            OUTPUT  "${_app}"
+            COMMAND "${USER_CC}" ${USER_CC_MACHINE} -X -s "${_crt0}" ${_objs}
+                    "-L${USER_LIB_DIR}" ${_lflags} -lc${USERCPU} -o "${_app}" -M
+            DEPENDS ${_objs} "${_crt0}" "${LIBC_A}"
+            COMMENT "ld${USERCPU}  ${_bin}"
+            VERBATIM)
+    endif()
     set(${outvar} "${_app}" PARENT_SCOPE)
 endfunction()
 
@@ -271,3 +311,44 @@ if(_shadowed)
 endif()
 message(STATUS "  total: ${_nbin} built of ${_nreg} registered  -> ${USER_BIN_DIR}")
 message(STATUS "  tune with -DFUZIX_PKG_<PKG>=ON/OFF, -DFUZIX_BINARIES_EXTRA/EXCLUDE, or -DFUZIX_CONFIG=<name>")
+
+# ---------------------------------------------------------------------------
+# 6. rpipico flash filesystem image (target: flashimage)  [armm0 only]
+# ---------------------------------------------------------------------------
+# Packs the built armm0 userland into a FUZIX fs -> Dhara FTL -> .uf2 to flash
+# at 0x10018000 (alongside the kernel fuzix.uf2 built by the rpipico kernel
+# configure). Mirrors platform-rpipico/update-flash.sh. Needs picotool.
+if(USERCPU STREQUAL "armm0")
+    find_program(PICOTOOL_BIN picotool)
+    set(MKFS_BIN   "${CMAKE_BINARY_DIR}/tools/mkfs")
+    set(UCP_BIN    "${CMAKE_BINARY_DIR}/tools/ucp")
+    set(FSCK_BIN   "${CMAKE_BINARY_DIR}/tools/fsck")
+    set(MKFTL_BIN  "${CMAKE_BINARY_DIR}/tools/mkftl")
+    set(ETC_DIR    "${CMAKE_SOURCE_DIR}/tools/filesystem-src/etc-files")
+    set(FLASH_OUT_DIR "${CMAKE_BINARY_DIR}/images")
+    set(FLASH_FSSIZE 2547)
+    set(PICO_UF2_FAMILY "rp2040")
+    set(PICO_UF2_OFFSET "0x10018000")
+    if(PICOTOOL_BIN)
+        configure_file("${CMAKE_SOURCE_DIR}/cmake/flashimage-rpipico.sh.in"
+                       "${CMAKE_BINARY_DIR}/flashimage-rpipico.sh" @ONLY)
+        add_custom_command(
+            OUTPUT  "${FLASH_OUT_DIR}/filesystem.uf2"
+            COMMAND /bin/sh "${CMAKE_BINARY_DIR}/flashimage-rpipico.sh"
+            DEPENDS ${_bin_outputs} "${MKFS_BIN}" "${UCP_BIN}" "${FSCK_BIN}" "${MKFTL_BIN}"
+                    "${CMAKE_BINARY_DIR}/flashimage-rpipico.sh"
+            COMMENT "flashimage  filesystem.uf2 (armm0 rootfs -> FTL -> uf2)"
+            VERBATIM)
+        add_custom_target(flashimage DEPENDS "${FLASH_OUT_DIR}/filesystem.uf2")
+        add_dependencies(flashimage bin tools)
+        message(STATUS "-- Flash image (target: flashimage) --")
+        message(STATUS "  picotool        : ${PICOTOOL_BIN}")
+        message(STATUS "  output          : ${FLASH_OUT_DIR}/filesystem.uf2 (flash @ ${PICO_UF2_OFFSET})")
+    else()
+        add_custom_target(flashimage
+            COMMAND ${CMAKE_COMMAND} -E echo
+                "flashimage: picotool not found on PATH (needed to make the .uf2)"
+            VERBATIM)
+        message(STATUS "-- Flash image: picotool NOT found (flashimage target will error)")
+    endif()
+endif()

@@ -31,6 +31,8 @@ else()
     set(CPU_USERMEM  "kernel/cpu/z80u/usermem_std-z80u.S")
 endif()
 
-# On z80u the boot sector is assembled with the standalone asz80 assembler.
+# On z80u the boot sector is assembled with the standalone asz80 assembler,
+# whose usage is `as [-o object.o] source.s` - the -o option must come BEFORE
+# the source file, otherwise asz80 prints usage and fails.
 set(CPU_BOOTBLOCK_ASSEMBLE
-    "\"${FUZIX_TOOLCHAIN_PREFIX}/bin/asz80\" \"$PLATDIR/bootblock.S\" -o bootblock.o")
+    "\"${FUZIX_TOOLCHAIN_PREFIX}/bin/asz80\" -o bootblock.o \"$PLATDIR/bootblock.S\"")

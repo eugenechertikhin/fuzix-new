@@ -10,6 +10,10 @@
 #   driver options.
 # ---------------------------------------------------------------------------
 
+# Shared z80pack driver tree: PREPEND so its devfd.h (declares hd_*) wins over
+# the generic kernel/dev/devfd.h.  Only z80pack-family boards pull this tree.
+list(PREPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/z80pack)
+
 # ld8080: -C load origin, -S split/common base.
 set(LINK_FLAGS -b -C 0x0100 -S 0xE800 -f CLDBbXSs)
 # Bytes of the kernel image to skip when laying it on the boot floppy

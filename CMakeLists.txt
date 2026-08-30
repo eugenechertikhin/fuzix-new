@@ -22,13 +22,44 @@ cmake_minimum_required(VERSION 3.16)
 #   cmake --build build
 # ===========================================================================
 
+# ---------------------------------------------------------------------------
+# Raspberry Pi Pico (armm0) uses the Pico SDK, which must be imported BEFORE
+# project() and needs C/CXX/ASM enabled. Detect it here (FUZIX_PLATFORM is a
+# -D / cache value, available pre-project) and set up the SDK; every other
+# target keeps LANGUAGES NONE (compiles are driven by custom commands).
+# FUZIX_USERLAND_ONLY builds only the armm0 userland (lib/bin) for the flash
+# filesystem, NOT the Pico-SDK kernel, so it skips this hook (see toolchain-armm0).
+# ---------------------------------------------------------------------------
+if(FUZIX_PLATFORM STREQUAL "rpipico" AND NOT FUZIX_USERLAND_ONLY)
+    if(NOT DEFINED PICO_SDK_PATH AND NOT DEFINED ENV{PICO_SDK_PATH})
+        set(PICO_SDK_PATH "${CMAKE_CURRENT_LIST_DIR}/toolchain/pico-sdk")
+    endif()
+    if(NOT DEFINED PICO_TOOLCHAIN_PATH AND NOT DEFINED ENV{PICO_TOOLCHAIN_PATH}
+       AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/toolchain/arm-none-eabi/bin/arm-none-eabi-gcc")
+        set(PICO_TOOLCHAIN_PATH "${CMAKE_CURRENT_LIST_DIR}/toolchain/arm-none-eabi/bin")
+    endif()
+    if(NOT DEFINED PICO_BOARD)
+        set(PICO_BOARD "pico")
+    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/pico_sdk_import.cmake")
+    set(_fuzix_langs C CXX ASM)
+else()
+    set(_fuzix_langs NONE)
+endif()
+
 project(fuzix_new
         VERSION 0.5
-        DESCRIPTION "FUZIX kernel, CMake build (i8080 / z80u)"
-        LANGUAGES NONE)
+        DESCRIPTION "FUZIX kernel, CMake build (i8080 / z80u / armm0 / …)"
+        LANGUAGES ${_fuzix_langs})
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(FuzixBuild)
+
+# Pico SDK must be initialised after project() and before the fuzix executable
+# target is defined (in cmake/platform-rpipico.cmake).
+if(FUZIX_PLATFORM STREQUAL "rpipico" AND NOT FUZIX_USERLAND_ONLY)
+    pico_sdk_init()
+endif()
 
 # ---------------------------------------------------------------------------
 # 0. Version strings (were version.mk in the original tree)
@@ -42,9 +73,9 @@ set(FUZIX_SUBVERSION "\"\"" CACHE STRING "FUZIX subversion string")
 # ---------------------------------------------------------------------------
 set(FUZIX_CPU      "i8080" CACHE STRING "Target CPU: i8080 | z80u")
 set(FUZIX_PLATFORM "v8080" CACHE STRING "Target platform/board: v8080 | z80pack")
-set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 z8 super8 z80u pdp11 i8086 armm4)
+set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 z8 super8 z80u pdp11 i8086 armm4 armm0)
 set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS
-    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x pdp11 ibmpc
+    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x rpipico pdp11 ibmpc
     # z80u boards
     aqplus challengeriii lobo-max80 nascom nano-z80 rc2014-tiny rcbus-tp128
     sbcv2 sbc2g sc720 z80membership z1013 zrc z80all z80-mbc2 z80retro
@@ -255,19 +286,28 @@ file(MAKE_DIRECTORY "${GEN}/include" "${FUZIX_OBJ_DIR}" "${FUZIX_IMAGE_DIR}")
 set(FUZIX_INCLUDE_FLAGS
     -I${KDIR}/cpu/${FUZIX_CPU}
     -I${KDIR}/platform/${FUZIX_PLATFORM}
-    -I${KDIR}/include
+    -I${KDIR}/include)
+# A board's own kernel/dev/<platform> drivers, if any, go BEFORE the generic
+# kernel/dev so a board-specific header wins over the generic one.
+if(IS_DIRECTORY "${KDIR}/dev/${FUZIX_PLATFORM}")
+    list(APPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/${FUZIX_PLATFORM})
+endif()
+# NOTE: shared driver trees whose headers COLLIDE with the generic kernel/dev
+# ones must NOT be added globally, or they shadow the generic header for boards
+# that don't use them.  Case in point: kernel/dev/z80pack/devfd.h declares hd_*
+# but omits fd_close, while the generic kernel/dev/devfd.h is the reverse — so a
+# global -I would break either the z80pack boards or everyone else.  Instead each
+# board that actually pulls such a tree PREPENDs it in its own platform-*.cmake
+# (see platform-z80pack/v8080 -> dev/z80pack, platform-nascom -> dev/80bus).
+list(APPEND FUZIX_INCLUDE_FLAGS
     -I${KDIR}/dev
     -I${KDIR}/lib
     -I${GEN}/include)               # generated sysinfoblk.h
-# Per-platform driver sub-directories: a board may keep its own drivers under
-# kernel/dev/<platform>, and several Z80 boards pull shared drivers from the
-# nascom-family kernel/dev/80bus tree. Add whichever exist so their flattened
-# plain-filename includes (devtty.h, fdc80.h, ...) resolve.
-foreach(_devsub "${FUZIX_PLATFORM}" 80bus z80pack net)
-    if(IS_DIRECTORY "${KDIR}/dev/${_devsub}")
-        list(APPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/${_devsub})
-    endif()
-endforeach()
+# Shared network driver headers (net_w5x00.h, enc28j60.h, ...) have unique names
+# that don't collide with the generic kernel/dev, so this tree is safe globally.
+if(IS_DIRECTORY "${KDIR}/dev/net")
+    list(APPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/net)
+endif()
 
 # Preprocessor defines derived from the options above.
 set(FUZIX_DEFS "")
@@ -312,25 +352,36 @@ add_custom_command(
     DEPENDS "${MAKEVERSION_BIN}"
     COMMENT "gen  version.c + sysinfoblk.h")
 
-# Host-side standalone utilities (mkfs/fsck/ucp/... ). Built via `tools` target.
-include(HostTools)
+# Host tools + userland + rootfs. Skipped for the Pico SDK build (rpipico),
+# which produces only the kernel image via the SDK and has no fcc/gcc userland
+# wired here.
+if(NOT FUZIX_PLATFORM STREQUAL "rpipico" OR FUZIX_USERLAND_ONLY)
+    # Host-side standalone utilities (mkfs/fsck/ucp/... ). Built via `tools` target.
+    include(HostTools)
 
-# Root filesystem image (target: rootfs). May override FUZIX_FILESYS_IMG below.
-include(RootFS)
+    # Root filesystem image (target: rootfs). May override FUZIX_FILESYS_IMG below.
+    include(RootFS)
 
-# Userland C library (target: lib). Builds libc<usercpu>.a + crt0 + liberror.txt
-# (and optionally libm/termcap/readline/curses) for the selected CPU.
-include(UserLib)
+    # Userland C library (target: lib). Builds libc<usercpu>.a + crt0 + liberror.txt
+    # (and optionally libm/termcap/readline/curses) for the selected CPU.
+    include(UserLib)
 
-# Userland programs (target: bin). Curated sh + coreutils, linked against
-# crt0 + libc<usercpu>.a. Depends on the `lib` target.
-include(UserBin)
+    # Userland programs (target: bin). Curated sh + coreutils, linked against
+    # crt0 + libc<usercpu>.a. Depends on the `lib` target.
+    include(UserBin)
 
-# The root filesystem pulls build artifacts (liberror.txt, /init) from the
-# userland lib/bin output dirs, so those targets must be built first. The `lib`
-# and `bin` targets only exist after UserBin/UserLib, hence wiring it here.
-if(TARGET rootfs)
-    add_dependencies(rootfs lib bin)
+    # The root filesystem pulls build artifacts (liberror.txt, /init) from the
+    # userland lib/bin output dirs, so those targets must be built first. The `lib`
+    # and `bin` targets only exist after UserBin/UserLib, hence wiring it here.
+    if(TARGET rootfs)
+        add_dependencies(rootfs lib bin)
+    endif()
+endif()
+
+# Userland-only build (armm0 for the rpipico flash filesystem): the lib/bin
+# targets above are all we need; no kernel image is produced.
+if(FUZIX_USERLAND_ONLY)
+    return()
 endif()
 
 set(FUZIX_EXTRA_DEPENDS "${GEN}/include/sysinfoblk.h")
@@ -342,6 +393,13 @@ set(FUZIX_EXTRA_DEPENDS "${GEN}/include/sysinfoblk.h")
 set_property(GLOBAL PROPERTY FUZIX_OBJECTS "")   # reset accumulator
 
 include("${CMAKE_SOURCE_DIR}/cmake/platform-${FUZIX_PLATFORM}.cmake")
+
+# rpipico defines its `fuzix` executable entirely inside the platform fragment
+# (Pico SDK add_executable + pico_add_extra_outputs); the fcc/gcc object-list
+# link, diskimage and config summary below do not apply, so stop here.
+if(FUZIX_PLATFORM STREQUAL "rpipico")
+    return()
+endif()
 
 # --- Optional subsystems (shared, appended after the platform base list) ---
 if(FUZIX_SELECT)

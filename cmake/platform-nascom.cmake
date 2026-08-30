@@ -7,6 +7,10 @@
 # Many drivers come from the shared kernel/dev/80bus/ tree (on the -I path).
 # ---------------------------------------------------------------------------
 
+# Shared 80-BUS driver tree: PREPEND so its plain-filename headers resolve ahead
+# of any generic kernel/dev ones.  Only nascom-family boards pull this tree.
+list(PREPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/80bus)
+
 # ldz80: -C load origin (0x0100), -8 second base (0xFC00), -S split/common
 # base (0xC000). Note: the image is right on the edge (see upstream comment) -
 # if it grows past C000 the -S value must be revisited.

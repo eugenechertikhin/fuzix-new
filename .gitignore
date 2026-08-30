@@ -6,4 +6,6 @@ build-*
 *.tmpmap
 fuzix.raw
 fuzix.bin
-toolchain/fcc
+toolchain/
+!toolchain/fake
+toolchain-src/*

@@ -1,4 +1,11 @@
-STARTUP(crt0.o)
+/*
+ * No STARTUP(crt0.o): the CMake build passes every object explicitly on the ld
+ * command line with crt0.o FIRST (see platform-pdp11.cmake), so crt0's .text is
+ * already placed at the start of .text.  STARTUP() would instead try to pull a
+ * file literally named crt0.o off the search path (which doesn't exist here) and,
+ * if found, link crt0 a second time.  Upstream's Makefile relied on STARTUP
+ * because it built crt0.o into the cwd and did not list it as an input.
+ */
 OUTPUT_ARCH(pdp11)
 
 

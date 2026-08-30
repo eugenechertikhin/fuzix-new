@@ -26,6 +26,7 @@ set(_ul_i8080_row    "8080"   fcc   "-m8080"    "-Os"            "")
 set(_ul_z80u_row     "z80"    fcc   "-mz80"     "-O"             "")
 set(_ul_pdp11_row    "pdp11"  gcc   ""          "-Os"            "-X")
 set(_ul_i8086_row    "8086"   gcc   ""          "-march=i8086 -Os" "-X")
+set(_ul_armm0_row    "armm0"  gcc   ""          "-std=c99 -mcpu=Cortex-M0plus -ffunction-sections -fdata-sections -fno-strict-aliasing -fomit-frame-pointer -fno-builtin -Os" "-X")
 
 if(NOT DEFINED _ul_${FUZIX_CPU}_row)
     # Userland not wired for this CPU yet: provide a `lib` target that explains.
@@ -155,6 +156,9 @@ add_custom_command(
     VERBATIM)
 
 set(LIBS_DIR "${LIBS}")
+# USER_OPT is a CMake list; flatten to a space-separated string for the shell
+# template (a raw @USER_OPT@ would substitute as one semicolon-joined argument).
+string(REPLACE ";" " " USER_OPT_STR "${USER_OPT}")
 configure_file("${CMAKE_SOURCE_DIR}/cmake/userlib-syscalls.sh.in"
                "${CMAKE_BINARY_DIR}/userlib-syscalls-${USERCPU}.sh" @ONLY)
 add_custom_command(

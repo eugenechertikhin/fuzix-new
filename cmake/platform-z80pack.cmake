@@ -5,6 +5,10 @@
 # / disk-image parameters. Mirrors platform-z80pack/Makefile's `image` rule.
 # ---------------------------------------------------------------------------
 
+# Shared z80pack driver tree: PREPEND so its devfd.h (declares hd_*) wins over
+# the generic kernel/dev/devfd.h.  Only z80pack-family boards pull this tree.
+list(PREPEND FUZIX_INCLUDE_FLAGS -I${KDIR}/dev/z80pack)
+
 # ldz80: -C load origin (0x0088), -S split/common base (0xF400),
 #        -X discard segment base (0xE900).
 set(LINK_FLAGS -b -C 0x0088 -S 0xF400 -X 0xE900 -f CLDBbXSs)
