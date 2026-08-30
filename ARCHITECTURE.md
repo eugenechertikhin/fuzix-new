@@ -140,9 +140,11 @@ The plain / banked / thunked choice — and the exact memory map — **varies by
 | `simple`                        | swap-only      | tiny 8-bit boards                    | one process in RAM, swap to disk |
 | *(thunked low-level)*           | thunked        | boards with no fixed region          | trampolines survive the switch |
 
-Two families have enough board-specific detail to live in their own  documents:
- - **[ZX.md](docs/ZX.md)** — ZX Spectrum / Z80: 128K memory map, `CODE1..CODE4` code banks, port `0x7FFD` switching, DivIDE/DivMMC automap, TinyDisk stack, the 32K-per-process limit.
- - **[X86.md](docs/X86.md)** — Intel x86 (8086 / 80C188 / PC): segmented real-mode model, the `bank8086` 4K-page manager, EMM/XMS, BIOS drivers.
+Some families have enough board-specific detail to live in their own documents:
+ - **[fcc8bit.md](docs/fcc8bit.md)** — the ported 8080 / 8085 / Z80 (`fcc`) family: toolchain, `bankfixed`/swap MM, boot/diskimage styles, shared driver trees. (Generic banked-Z80 model is upstream in [Z80banked.md](docs/Z80banked.md) / [Z80Thunked.md](docs/Z80Thunked.md).)
+ - **[Spectrum.md](docs/Spectrum.md)** — ZX Spectrum family (Z80 / SDCC, **not ported**): 128K memory map, `CODE1..CODE4` code banks, port `0x7FFD` switching, DivIDE/DivMMC automap, TinyDisk stack, the 32K-per-process limit.
+ - **[8086.md](docs/8086.md)** — IBM PC (Intel 8086/8088): segmented real-mode model, the `bank8086` 4K-page manager, EMM/XMS, BIOS drivers.
+ - **[80c188.md](docs/80c188.md)** — embedded 80C188 (RCBus): shares the i8086 CPU/toolchain but no BIOS; swap-only for now.
 
 # Platforms
 
@@ -266,8 +268,8 @@ Two families have enough board-specific detail to live in their own  documents:
 | mini11              | 68hc11   | 68HC11 GCC      | tested       | Mini11 68HC11A SBC                                 |
 | minim8              | 68hc11   | 68HC11 GCC      | WIP          | Minimal 68HC11 SBC                                 |
 | rcbus-68hc11        | 68hc11   | 68HC11 GCC      | tested       | RCBus with 68HC11 CPU                              |
-| ✅ **ibmpc**        | 8086     | ia16 GCC        | build-test   | IBM PC / clones (8086); core build only, no loader |
-| ✅ **rcbus-80c188** | 8086     | ia16 GCC        | early WIP    | RCBus with 80C188                                  |
+| ✅ **ibmpc**        | 8086     | ia16 GCC        | WIP          | IBM PC / clones (8086); MM + context switch build, blocked on stale driver signatures, then needs a loader |
+| ✅ **rcbus-80c188** | 8086     | ia16 GCC        | builds       | RCBus with 80C188; kernel builds to fuzix.bin      |
 | ✅ **rpipico**      | armm0    | ARM GCC (Pico)  | builds       | Raspberry Pi Pico (RP2040), Pico SDK -> .uf2       |
 | ✅ **tm4c129x**     | armm4    | ARM GCC         | test pending | TI Tiva C Series boards                            |
 | esp8266             | esp8266  | Xtensa GCC      | test pending | ESP8266 module with added SD card                  |

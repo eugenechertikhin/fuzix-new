@@ -4,7 +4,7 @@ FUZIX is a fusion of various elements from the assorted UZI forks and branches b
 
 This is the rework of well-known FuzixOS project.  A CMake-driven build of the [FUZIX](https://codeberg.org/EtchedPixels/FUZIX) kernel where the **target CPU, platform, memory manager, filesystem and device drivers are selected with build flags** instead of per-platform Makefiles.
 
-Per-CPU settings live in `cmake/cpu-<cpu>.cmake`, per-platform link recipes in `cmake/platform-<platform>.cmake`, so more CPUs/platforms can be added later. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full roadmap of all 30 CPU ports and 132 boards, plus deep-dives on the [ZX Spectrum / Z80](docs/ZX.md) and [x86](docs/X86.md) families.
+Per-CPU settings live in `cmake/cpu-<cpu>.cmake`, per-platform link recipes in `cmake/platform-<platform>.cmake`, so more CPUs/platforms can be added later. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full roadmap of all 30 CPU ports and 132 boards, plus deep-dives on the [8080/8085/Z80 fcc family](docs/fcc8bit.md), [ZX Spectrum (SDCC)](docs/Spectrum.md), [IBM PC / 8086](docs/8086.md) and [embedded 80C188](docs/80c188.md) families.
 
 ## Layout
 
@@ -280,7 +280,7 @@ Pass `all` to also build the userland and pack the disk/flash images; give one o
 | `FUZIX_DRIVER_RTC_DS1302`  | `ON`        | DS1302 real-time clock (rcbus-8080)          |
 | `FUZIX_DRIVER_JOYSTICK`    | `ON`        | Joystick + core input layer (rcbus-8080)     |
 
-`FUZIX_Z80U_MODE` picks the Z80 low-level variant: `normal` for boards with common RAM (a region mapped in every bank — the usual case, including `z80pack`), `thunked` for boards where the whole 64K switches at once. See [ARCHITECTURE.md](ARCHITECTURE.md#memory-model--banking) for the banking model in general, and [ZX.md](docs/ZX.md) for the ZX Spectrum / Z80 platform specifics (128K memory map, `CODE1..CODE4` banks, DivIDE/DivMMC, the 32K process limit).
+`FUZIX_Z80U_MODE` picks the Z80 low-level variant: `normal` for boards with common RAM (a region mapped in every bank — the usual case, including `z80pack`), `thunked` for boards where the whole 64K switches at once. See [ARCHITECTURE.md](ARCHITECTURE.md#memory-model--banking) for the banking model in general, [fcc8bit.md](docs/fcc8bit.md) for the ported 8080/8085/Z80 (`fcc`) family, and [Z80Thunked.md](docs/Z80Thunked.md) for the no-common / thunked variant.
 
 ### Memory managers (`FUZIX_MM`)
 

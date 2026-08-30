@@ -1,8 +1,8 @@
-# FUZIX on ZX Spectrum / Z80 platforms
+# FUZIX on the ZX Spectrum family (Z80 / SDCC)
 
-Deep-dive into how FUZIX ports to **ZX Spectrum-class Z80 machines** (and Z80 banked systems in general). The generic banking model lives in [ARCHITECTURE.md](../ARCHITECTURE.md#memory-model--banking); this file collects the concrete, board-level facts. All file references point at the upstream tree (`../FUZIX/Kernel/…`); none of these boards are ported into `fuzix-new` yet.
+Deep-dive into how FUZIX ports to **ZX Spectrum-class machines** specifically — the 128K/Pentagon/Scorpion/Timex/SAM boards. This is **not** a general Z80 document: the generic banked-Z80 model (the `map_*` contract, common memory, crt0) is upstream in [Z80banked.md](Z80banked.md), the no-common / 32K-split "special cases" are in [Z80Thunked.md](Z80Thunked.md), and the syscall/register ABI is in [Z80ABI.md](Z80ABI.md). The generic banking overview lives in [ARCHITECTURE.md](../ARCHITECTURE.md#memory-model--banking). This file collects the concrete, Spectrum-board-level facts. All file references point at the upstream tree (`../FUZIX/Kernel/…`); **none of these Spectrum boards are ported into `fuzix-new` yet**.
 
-These are the **classic `cpu-z80`** (SDCC) ports. The new-compiler [`z80u`](../kernel/cpu/z80u/) port (built with `fcc`) is a separate CPU that reuses the same banking *ideas* but a different toolchain and low-level code.
+These are the **classic `cpu-z80`** (SDCC) ports. The Z80 CPU actually ported into `fuzix-new` is the new-compiler [`z80u`](../kernel/cpu/z80u/) (built with `fcc`) — a separate CPU that reuses the same banking *ideas* but a different toolchain and low-level code; see [fcc8bit.md](fcc8bit.md) for that ported 8080/8085/Z80 family.
 
 ---
 
