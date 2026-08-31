@@ -81,7 +81,9 @@ set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS
     sbcv2 sbc2g sc720 z80membership z1013 zrc z80all z80-mbc2 z80retro
     searle tomssbc simple80
     # classic SDCC z80 boards
-    2063)
+    2063 amprolb
+    # ZX Spectrum family (SDCC z80); banked zx128/zxdiv/zxdiv48/zxspectra are WIP
+    zxuno zxevo zx+3)
 
 # Toolchain kind: "fcc" (Fuzix Compiler Kit, ld8080/ldz80 + pack85) or "gcc"
 # (standard gcc + linker script + objcopy, e.g. pdp11). Set by the toolchain
@@ -131,9 +133,11 @@ if(FUZIX_PLATFORM STREQUAL "pdp11")
     set(_mm_default "simple")
 elseif(FUZIX_PLATFORM STREQUAL "ibmpc")
     set(_mm_default "bank8086")
-elseif(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|rcbus-80c188)$")
+elseif(FUZIX_PLATFORM MATCHES "^(zx128|zxdiv|zxspectra)$")
+    set(_mm_default "unbanked")   # custom platform MM (bank128.c etc), empty -D
+elseif(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|rcbus-80c188|zx\\+3|zxdiv48|amprolb)$")
     set(_mm_default "simple")     # swap-only boards
-elseif(FUZIX_PLATFORM MATCHES "^(aqplus|z80retro)$")
+elseif(FUZIX_PLATFORM MATCHES "^(aqplus|z80retro|zxevo)$")
     set(_mm_default "bank16k")    # 4x16K banked boards
 elseif(FUZIX_PLATFORM MATCHES "^(rcbus-8070|rcbus-6800)$")
     set(_mm_default "bank16kfc")  # 4x16K flash-friendly banked
@@ -192,7 +196,7 @@ endif()
 # Swap-only boards run one process resident at a time (upstream config.h has
 # CONFIG_MULTI undefined); default multiprocess OFF for them so a bare build
 # matches the board. An explicit -DFUZIX_MULTIPROCESS=ON/OFF still wins.
-if(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80)$")
+if(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|amprolb)$")
     set(_mp_default OFF)
 else()
     set(_mp_default ON)
@@ -376,6 +380,10 @@ if(NOT FUZIX_PLATFORM STREQUAL "rpipico" OR FUZIX_USERLAND_ONLY)
     if(FUZIX_PLATFORM STREQUAL "rcbus-6800")
         set(FUZIX_ROOTFS_GEN_BIN ON CACHE BOOL "Install all built userland executables into /bin")
     endif()
+    # amprolb: 40MB parttab (part1 = 32MB) fits the default fs; populate /bin.
+    if(FUZIX_PLATFORM STREQUAL "amprolb")
+        set(FUZIX_ROOTFS_GEN_BIN ON CACHE BOOL "Install all built userland executables into /bin")
+    endif()
 
     # Root filesystem image (target: rootfs). May override FUZIX_FILESYS_IMG below.
     include(RootFS)
@@ -472,6 +480,35 @@ elseif(LINK_STYLE STREQUAL "arm-elf")
                    "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
     set(_link_dep "${LINK_SCRIPT}")
     set(_link_comment "arm-ld -T --entry=start -> fuzix.elf")
+elseif(LINK_STYLE STREQUAL "sdcc-banked")
+    # Banked ZX boards: host-built bank-aware sdld + bihx/binman/bin2sna/bin2z80.
+    set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
+    set(BINMAN_BIN  "${CMAKE_BINARY_DIR}/tools/binman")
+    set(BIHX_BIN    "${CMAKE_BINARY_DIR}/tools/bihx")
+    set(BIN2SNA_BIN "${CMAKE_BINARY_DIR}/tools/bin2sna")
+    set(BIN2Z80_BIN "${CMAKE_BINARY_DIR}/tools/bin2z80")
+    set(BANKLD_BIN  "${CMAKE_BINARY_DIR}/tools/sdldz80-bank")
+    foreach(_t binman bihx bin2sna bin2z80)
+        add_custom_command(
+            OUTPUT  "${CMAKE_BINARY_DIR}/tools/${_t}"
+            COMMAND "${HOSTCC}" -O2 -o "${CMAKE_BINARY_DIR}/tools/${_t}" "${CMAKE_SOURCE_DIR}/tools/${_t}.c"
+            DEPENDS "${CMAKE_SOURCE_DIR}/tools/${_t}.c"
+            COMMENT "host cc  tools/${_t}")
+    endforeach()
+    file(GLOB _bankld_srcs "${CMAKE_SOURCE_DIR}/tools/bankld/*.c")
+    add_custom_command(
+        OUTPUT  "${BANKLD_BIN}"
+        COMMAND "${HOSTCC}" -O2 -DINDEXLIB -DUNIX -I "${CMAKE_SOURCE_DIR}/tools/bankld"
+                -o "${BANKLD_BIN}" ${_bankld_srcs}
+        DEPENDS ${_bankld_srcs}
+        COMMENT "host cc  tools/bankld/sdldz80-bank")
+    string(REPLACE ";" " " LINK_SDCC_BASES_STR "${LINK_SDCC_BASES}")
+    string(REPLACE ";" " " LINK_SDCC_FLAGS "${LINK_SDCC_FLAGS}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/link-image-sdcc-banked.sh.in"
+                   "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
+    set(_link_dep "${BANKLD_BIN}" "${BINMAN_BIN}" "${BIHX_BIN}"
+                  "${BIN2SNA_BIN}" "${BIN2Z80_BIN}")
+    set(_link_comment "bankld + bihx + binman + bin2sna/z80 -> fuzix.bin/.sna/.z80")
 elseif(LINK_STYLE STREQUAL "sdcc-ihx")
     # sdcc/z80: sdldz80 + .lnk -> Intel HEX, then makebin + binman -> fuzix.bin.
     set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
@@ -559,7 +596,28 @@ elseif(DISKIMAGE_STYLE STREQUAL "rootdisk")
     add_dependencies(diskimage bin tools)
     set(DISKIMAGE_SKIP_KERNEL_DEP ON)
 else()
-    if(DISKIMAGE_STYLE STREQUAL "rcbus-6800")
+    if(DISKIMAGE_STYLE STREQUAL "amprolb")
+        # Ampro Little Board: CP/M boot loader + parttab.40M + fs + kernel split.
+        set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
+        if(NOT FUZIX_PARTTAB)
+            set(FUZIX_PARTTAB "${CMAKE_SOURCE_DIR}/tools/filesystem-src/parttab.40M")
+        endif()
+        configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-amprolb.sh.in"
+                       "${CMAKE_BINARY_DIR}/diskimage.sh" @ONLY)
+        set(_diskimage_dep "${PLATFORM_DIR}/cpmboot.s")
+        set(_diskimage_comment "Building cpmboot + 40MB disk.img")
+    elseif(DISKIMAGE_STYLE STREQUAL "zxuno-esxdos")
+        # ZX-Uno esxdos .hdf: esx loader + FAT16 (esxdos + kernel) + FUZIX fs.
+        set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
+        set(MKFS_FAT_BIN "${CMAKE_BINARY_DIR}/tools/mkfs_fat")   # built by HostTools
+        set(FUZIX_HDFMONKEY "hdfmonkey" CACHE STRING "hdfmonkey binary (on PATH or absolute)")
+        set(ESXDOS_DIR "${CMAKE_SOURCE_DIR}/toolchain/esxdos")
+        configure_file("${CMAKE_SOURCE_DIR}/cmake/diskimage-zxuno.sh.in"
+                       "${CMAKE_BINARY_DIR}/diskimage.sh" @ONLY)
+        set(_diskimage_dep "${PLATFORM_DIR}/load-esx.s")
+        set(_diskimage_comment "Building esxdos disk.hdf (FAT16 + FUZIX fs)")
+        set(_diskimage_needs_tools ON)   # mkfs_fat comes from the `tools` target
+    elseif(DISKIMAGE_STYLE STREQUAL "rcbus-6800")
         # Motorola 6800 RCBus: loader + parttab.40M + fs + kernel, plus an
         # idehdr-prefixed emulator image.
         if(NOT FUZIX_PARTTAB)
@@ -602,6 +660,11 @@ else()
 endif()
 if(NOT DISKIMAGE_SKIP_KERNEL_DEP)
     add_dependencies(diskimage fuzix)
+endif()
+
+# Some diskimage styles need host tools (e.g. mkfs_fat for the zxuno esxdos hdf).
+if(_diskimage_needs_tools AND TARGET tools)
+    add_dependencies(diskimage tools)
 endif()
 
 # If the root fs is built here, make diskimage build it first.

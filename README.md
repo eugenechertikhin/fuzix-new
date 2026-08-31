@@ -81,7 +81,7 @@ fuzix-new/
 
 There are several **toolchain kinds**. 
 - The 8080/Z80 targets use the **Fuzix Compiler Kit** (`fcc`) + **Fuzix Bintools**; 
-- The classic **Z80** (`z80`, board `2063`) uses **SDCC** (`sdcc`/`sdasz80`/`sdldz80`): banked `.lnk` link to Intel HEX, then `makebin` + `binman` to a flat image. Install prefix defaults to `./toolchain/sdcc`. (Its fcc userland still comes from `./toolchain/fcc`.)
+- The classic **Z80** (`z80`, boards `2063` and the ZX Spectrum family `zxuno`/`zxevo`/`zx+3`) uses **SDCC** (`sdcc`/`sdasz80`/`sdldz80`): banked `.lnk` link to Intel HEX, then `makebin` + `binman` to a flat image. Install prefix defaults to `./toolchain/sdcc`. (Its fcc userland still comes from `./toolchain/fcc`.) `zxuno` builds a bootable esxdos `disk.hdf` from `tools/mkfs_fat.c` + `hdfmonkey` + the ESXDOS files in `toolchain/esxdos`. The banked ZX boards (`zx128`/`zxdiv`/`zxdiv48`/`zxspectra`) are **broken** — stale vs the current kernel API (bank/video/tty platform hooks); the bank-aware linker (`tools/bankld`) + snapshot pipeline (`bin2sna`/`bin2z80`) infrastructure is in place for when they are modernised.
 - The PDP-11 use standard **gcc** cross toolchains `pdp11-aout-gcc` with a linker script flattens with `objcopy`.
 - The 8086 use standard **gcc** cross toolchains `ia16-elf-gcc` and links straight to an ELF.
 
@@ -150,104 +150,11 @@ cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80u.cmake \
       -DFUZIX_CPU=z80u -DFUZIX_PLATFORM=z80pack \
       -DFUZIX_TOOLCHAIN_PREFIX=$PWD/toolchain/fake
 cmake --build build
-
-# classic Z80 (SDCC), John Winans 2063 board: kernel + bootable SD disk image.
-# The kernel builds with SDCC (./toolchain/sdcc); the fcc userland (./toolchain/fcc)
-# populates the root fs, so both toolchains are used.
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80.cmake \
-      -DFUZIX_CPU=z80 -DFUZIX_PLATFORM=2063 -DFUZIX_ROOTFS=ON
-cmake --build build --target diskimage    # -> build/images/disk.img (20MB, boot + kernel + populated fs)
-
-# boot floppy + root disk (either target)
-cmake --build build --target diskimage
-# -> build/images/boot.dsk, build/images/drivep.dsk
 ```
 
 The produced `fuzix.bin` / `boot.dsk` are dummies (filled from the stub tools), but the whole build/link/pack/dd pipeline executes exactly as it would with the real toolchain — so command lines, object ordering, generated headers and image geometry are all verified. See [`toolchain/fake/README.md`](toolchain/fake/README.md) for details.
 
 For a real kernel, install the actual toolchain and point `FUZIX_TOOLCHAIN_PREFIX` at it (default `./toolchain/fcc`) instead.
-
-## Build by hands
-
-```sh
-# i8080 / v8080  (defaults)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8080.cmake
-cmake --build build
-# -> build/image/fuzix.bin   (packed, loadable kernel image)
-
-# i8085 / rcbus-8085
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8085.cmake \
-      -DFUZIX_CPU=i8085 -DFUZIX_PLATFORM=rcbus-8085
-cmake --build build
-
-# 8070 / rcbus-8070   (ld8070 emits fuzix.bin directly, no pack85)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-8070.cmake \
-      -DFUZIX_CPU=8070 -DFUZIX_PLATFORM=rcbus-8070
-
-# 6800 / rcbus-6800   (Motorola 6800, big-endian; ld6800 -> fuzix.bin, no pack85)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-6800.cmake \
-      -DFUZIX_CPU=6800 -DFUZIX_PLATFORM=rcbus-6800
-cmake --build build
-
-# z8 / rcbus-z8   (ldz8 emits fuzix.bin directly, no pack85)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z8.cmake \
-      -DFUZIX_CPU=z8 -DFUZIX_PLATFORM=rcbus-z8
-cmake --build build
-
-# super8 / rcbus-super8   (ldsuper8 emits fuzix.bin directly, no pack85)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-super8.cmake \
-      -DFUZIX_CPU=super8 -DFUZIX_PLATFORM=rcbus-super8
-cmake --build build
-
-# armm4 / tm4c129x   (ARM Cortex-M4, arm-none-eabi-gcc -> fuzix.elf)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armm4.cmake \
-      -DFUZIX_CPU=armm4 -DFUZIX_PLATFORM=tm4c129x \
-      -DFUZIX_ARM_PREFIX=$PWD/toolchain/arm-none-eabi/bin
-cmake --build build
-
-# armm0 / rpipico   (Raspberry Pi Pico SDK -> build/fuzix.uf2)
-# No CMAKE_TOOLCHAIN_FILE: the Pico SDK sets up the arm toolchain itself. The
-# SDK is found via PICO_SDK_PATH (env) or ./toolchain/pico-sdk; the arm tools
-# via PICO_TOOLCHAIN_PATH or ./toolchain/arm-none-eabi/bin. Pick the board with
-# -DPICO_BOARD=pico|pico2 (default pico).
-cmake -B build -DFUZIX_CPU=armm0 -DFUZIX_PLATFORM=rpipico
-cmake --build build          # -> build/fuzix.elf + build/fuzix.uf2
-
-# rpipico FLASH FILESYSTEM (the armm0 userland, as a second .uf2 @ 0x10018000).
-# A separate userland-only configure builds libcarmm0.a + the apps (arm PIE ELF)
-# and packs a FUZIX fs -> Dhara FTL -> .uf2 (needs picotool on PATH).
-cmake -B build-user -DFUZIX_CPU=armm0 -DFUZIX_PLATFORM=rpipico \
-      -DFUZIX_USERLAND_ONLY=ON \
-      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armm0.cmake \
-      -DFUZIX_ARM_PREFIX=$PWD/toolchain/arm-none-eabi/bin \
-      -DFUZIX_BINARIES_EXTRA=init
-cmake --build build-user --target flashimage   # -> build-user/images/filesystem.uf2
-# Flash both: build/fuzix.uf2 (kernel) and build-user/images/filesystem.uf2 (@0x10018000)
-
-# 80C188 / rcbus-80c188   (ia16 gcc, build-testing only like ibmpc)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8086.cmake \
-      -DFUZIX_CPU=i8086 -DFUZIX_PLATFORM=rcbus-80c188 \
-      -DFUZIX_IA16_PREFIX=<ia16-elf bindir>
-cmake --build build
-
-# z80u / z80pack
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-z80u.cmake \
-      -DFUZIX_CPU=z80u -DFUZIX_PLATFORM=z80pack
-cmake --build build
-
-# pdp11 / pdp11  (gcc toolchain: pdp11-aout-gcc on PATH, or -DFUZIX_PDP11_PREFIX=...)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-pdp11.cmake \
-      -DFUZIX_CPU=pdp11 -DFUZIX_PLATFORM=pdp11
-cmake --build build
-
-# i8086 / ibmpc  (gcc toolchain: ia16-elf-gcc on PATH, or -DFUZIX_IA16_PREFIX=...)
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-i8086.cmake \
-      -DFUZIX_CPU=i8086 -DFUZIX_PLATFORM=ibmpc
-cmake --build build
-# -> build/image/fuzix.elf   (core build only: no loader/drivers yet)
-```
-
-CMake prints a configuration summary showing exactly which modules were selected (CPU, platform, linker, memory manager, object count, …).
 
 ## Building images with `regress.sh` (recommended)
 
@@ -272,7 +179,7 @@ Pass `all` to also build the userland and pack the disk/flash images; give one o
 | Option                     | Default     | Meaning |
 |----------------------------|-------------|----------------------------------------------|
 | `FUZIX_CPU`                | `i8080`     | Target CPU: `i8080`, `i8085`, `8070`, `z8`, `super8`, `z80u`, `pdp11`, `i8086`, `armm4` or `armm0` |
-| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `rcbus-8080`, `rcbus-8085`, `rcbus-8070`, `rcbus-6800`, `rcbus-z8`, `rcbus-super8`, `rcbus-80c188`, `2063`, `tm4c129x`, `rpipico`, `pdp11`, `ibmpc`, or any of the 19 `z80u` boards (`z80pack`, `aqplus`, `nascom`, `z80-mbc2`, … — see ARCHITECTURE.md). The right memory manager / multiprocess default is selected per board, so a bare `-DFUZIX_PLATFORM=<b>` just works. |
+| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `rcbus-8080`, `rcbus-8085`, `rcbus-8070`, `rcbus-6800`, `rcbus-z8`, `rcbus-super8`, `rcbus-80c188`, `2063`, `amprolb`, `zxuno`, `zxevo`, `zx+3`, `tm4c129x`, `rpipico`, `pdp11`, `ibmpc`, or any of the 19 `z80u` boards (`z80pack`, `aqplus`, `nascom`, `z80-mbc2`, … — see ARCHITECTURE.md). The right memory manager / multiprocess default is selected per board, so a bare `-DFUZIX_PLATFORM=<b>` just works. |
 | `FUZIX_Z80U_MODE`          | `normal`    | z80u low-level: `normal` (common RAM) or `thunked` |
 | `FUZIX_MM`                 | `bankfixed` | Memory manager (see below)                   |
 | `FUZIX_MEMALLOC`           | `none`      | User allocator: `none` or `malloc`           |

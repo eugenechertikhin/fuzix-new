@@ -51,8 +51,29 @@ set(FUZIX_ASINCLUDES
     "-I${CMAKE_SOURCE_DIR}/kernel/platform/${FUZIX_PLATFORM}"
     "-I${CMAKE_SOURCE_DIR}/kernel/cpu/z80"
     "-I${CMAKE_SOURCE_DIR}/kernel/dev"
+    "-I${CMAKE_SOURCE_DIR}/kernel/dev/zx"
     "-I${CMAKE_SOURCE_DIR}/kernel/lib")
 
 # The classic Z80 image is produced from Intel HEX by sdldz80, then packed to a
 # flat binary (see cmake/link-image-sdcc.sh.in).
 set(LINK_STYLE "sdcc-ihx")
+set(LINK_SDCC_FLAGS "")   # extra sdld flags (banked boards add -r)
+
+# ---------------------------------------------------------------------------
+# Banked ZX Spectrum boards: overlapping code banks (_CODE / _CODE2 at the same
+# address in different RAM pages). These need the fuzix bank-aware sdld
+# (tools/bankld, host-built as sdldz80-bank), the --external-banker code model,
+# the banked low-level/usermem, and a bank-splitting image pipeline (bihx +
+# per-bank makebin + bin2sna/bin2z80). See link-image-sdcc-banked.sh.in.
+# ---------------------------------------------------------------------------
+if(FUZIX_PLATFORM MATCHES "^(zx128|zxdiv|zxdiv48|zxspectra)$")
+    set(FUZIX_SDCC_BANKED ON)
+    # Upstream uses --external-banker (old SDCC); modern SDCC (4.x) spells the
+    # same banked-call code model --legacy-banking.
+    list(APPEND FUZIX_SDCC_OPTS --legacy-banking)
+    set(CPU_LOWLEVEL "kernel/cpu/z80/lowlevel-z80-banked.s")
+    set(CPU_USERMEM  "kernel/cpu/z80/usermem_std-z80-banked.s")
+    set(FUZIX_LD "${CMAKE_BINARY_DIR}/tools/sdldz80-bank")   # host-built bankld
+    set(LINK_STYLE "sdcc-banked")
+    set(LINK_SDCC_FLAGS "-r")
+endif()

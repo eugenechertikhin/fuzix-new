@@ -6,7 +6,9 @@
 # build machine:
 #
 #   mkfs / mkfs400     create an empty FUZIX filesystem image (512 / 400 blk)
+#   mkfs_fat           create an empty FAT12/FAT16 image (self-contained)
 #   fsck / fsck400     check/repair a filesystem image
+#   fsck_fat           check/repair a FAT12/FAT16 image (self-contained)
 #   ucp                "UZI copy" - populate an image with files from the host
 #   chmem              patch the memory-size header of a binary
 #   sethint            set hint bytes in a binary
@@ -61,7 +63,9 @@ endfunction()
 
 fuzix_host_tool(mkfs     SOURCES mkfs.c    util.c)
 fuzix_host_tool(mkfs400  SOURCES mkfs400.c util400.c)
+fuzix_host_tool(mkfs_fat SOURCES mkfs_fat.c)
 fuzix_host_tool(fsck     SOURCES fsck.c    util.c)
+fuzix_host_tool(fsck_fat SOURCES fsck_fat.c)
 fuzix_host_tool(fsck400  SOURCES fsck400.c util400.c)
 fuzix_host_tool(ucp      SOURCES ucp.c     util.c)
 fuzix_host_tool(chmem    SOURCES chmem.c)
