@@ -81,7 +81,7 @@ set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS
     sbcv2 sbc2g sc720 z80membership z1013 zrc z80all z80-mbc2 z80retro
     searle tomssbc simple80
     # classic SDCC z80 boards
-    2063 amprolb
+    2063 amprolb cpc6128 c128-z80 cpcsme
     # ZX Spectrum family (SDCC z80); banked zx128/zxdiv/zxdiv48/zxspectra are WIP
     zxuno zxevo zx+3)
 
@@ -135,7 +135,7 @@ elseif(FUZIX_PLATFORM STREQUAL "ibmpc")
     set(_mm_default "bank8086")
 elseif(FUZIX_PLATFORM MATCHES "^(zx128|zxdiv|zxspectra)$")
     set(_mm_default "unbanked")   # custom platform MM (bank128.c etc), empty -D
-elseif(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|rcbus-80c188|zx\\+3|zxdiv48|amprolb)$")
+elseif(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|rcbus-80c188|zx\\+3|zxdiv48|amprolb|cpc6128|c128-z80)$")
     set(_mm_default "simple")     # swap-only boards
 elseif(FUZIX_PLATFORM MATCHES "^(aqplus|z80retro|zxevo)$")
     set(_mm_default "bank16k")    # 4x16K banked boards
@@ -196,7 +196,7 @@ endif()
 # Swap-only boards run one process resident at a time (upstream config.h has
 # CONFIG_MULTI undefined); default multiprocess OFF for them so a bare build
 # matches the board. An explicit -DFUZIX_MULTIPROCESS=ON/OFF still wins.
-if(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|amprolb)$")
+if(FUZIX_PLATFORM MATCHES "^(searle|tomssbc|rc2014-tiny|z1013|simple80|amprolb|c128-z80)$")
     set(_mp_default OFF)
 else()
     set(_mp_default ON)

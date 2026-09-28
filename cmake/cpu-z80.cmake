@@ -51,8 +51,15 @@ set(FUZIX_ASINCLUDES
     "-I${CMAKE_SOURCE_DIR}/kernel/platform/${FUZIX_PLATFORM}"
     "-I${CMAKE_SOURCE_DIR}/kernel/cpu/z80"
     "-I${CMAKE_SOURCE_DIR}/kernel/dev"
-    "-I${CMAKE_SOURCE_DIR}/kernel/dev/zx"
     "-I${CMAKE_SOURCE_DIR}/kernel/lib")
+# Board-specific shared driver dirs contain a `video.s` under BOTH dev/zx and
+# dev/cpc; adding both would let sdasz80 resolve `.include "video.s"` to the
+# wrong one by search order. Add only the family the current board belongs to.
+if(FUZIX_PLATFORM MATCHES "^(zxuno|zxevo|zx\\+3|zx128|zxdiv|zxdiv48|zxspectra)$")
+    list(APPEND FUZIX_ASINCLUDES "-I${CMAKE_SOURCE_DIR}/kernel/dev/zx")
+elseif(FUZIX_PLATFORM MATCHES "^(cpc6128|cpc464|cpcsme)$")
+    list(APPEND FUZIX_ASINCLUDES "-I${CMAKE_SOURCE_DIR}/kernel/dev/cpc")
+endif()
 
 # The classic Z80 image is produced from Intel HEX by sdldz80, then packed to a
 # flat binary (see cmake/link-image-sdcc.sh.in).
