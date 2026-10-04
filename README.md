@@ -104,8 +104,9 @@ For the fcc targets the linker and C library are **derived from the selected CPU
 | `z80`   | sdcc | `sdcc -mz80` | `sdldz80` | `makebin` + `binman` | `z80.lib` |
 | `pdp11` | gcc  | `pdp11-aout-gcc` | `pdp11-aout-ld -T fuzix.ld` | `objcopy -O binary` | (gcc libc) |
 | `i8086` | gcc  | `ia16-elf-gcc`   | `ia16-elf-ld -T fuzix.ld`   | (none, ELF image)   | (gcc libc) |
+| `esp8266` | gcc | `xtensa-esp-elf-gcc` | `gcc -T kernel.ld -T addresses.ld -flto -nostdlib -lgcc` | (none, ELF image) | (gcc libgcc) |
 
-The PDP-11 tools are expected on `PATH`; point `-DFUZIX_PDP11_PREFIX=<dir>` at them if they live elsewhere. Use `cmake/toolchain-pdp11.cmake` for that target. The 8086 tools work the same way via `cmake/toolchain-i8086.cmake` and `-DFUZIX_IA16_PREFIX=<dir>`.
+The PDP-11 tools are expected on `PATH`; point `-DFUZIX_PDP11_PREFIX=<dir>` at them if they live elsewhere. Use `cmake/toolchain-pdp11.cmake` for that target. The 8086 tools work the same way via `cmake/toolchain-i8086.cmake` and `-DFUZIX_IA16_PREFIX=<dir>`. The ESP8266 uses `cmake/toolchain-esp8266.cmake` (in-repo `toolchain/xtensa-esp-elf`, override dir with `-DFUZIX_XTENSA_PREFIX=<dir>`); it is build-testing only — that toolchain is ESP32-core, not a true lx106.
 
 The toolchain location is fully configurable via `cmake/toolchain-i8080.cmake` (or its `cmake/toolchain-z80u.cmake` alias). The default install prefix is `./toolchain/fcc`; override it as needed:
 
@@ -178,8 +179,8 @@ Pass `all` to also build the userland and pack the disk/flash images; give one o
 
 | Option                     | Default     | Meaning |
 |----------------------------|-------------|----------------------------------------------|
-| `FUZIX_CPU`                | `i8080`     | Target CPU: `i8080`, `i8085`, `8070`, `z8`, `super8`, `z80u`, `pdp11`, `i8086`, `armm4` or `armm0` |
-| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `rcbus-8080`, `rcbus-8085`, `rcbus-8070`, `rcbus-6800`, `rcbus-z8`, `rcbus-super8`, `rcbus-80c188`, `2063`, `amprolb`, `cpc6128`, `c128-z80`, `cpcsme`, `zxuno`, `zxevo`, `zx+3`, `tm4c129x`, `rpipico`, `pdp11`, `ibmpc`, or any of the 19 `z80u` boards (`z80pack`, `aqplus`, `nascom`, `z80-mbc2`, … — see ARCHITECTURE.md). The right memory manager / multiprocess default is selected per board, so a bare `-DFUZIX_PLATFORM=<b>` just works. |
+| `FUZIX_CPU`                | `i8080`     | Target CPU: `i8080`, `i8085`, `8070`, `6800`, `z8`, `super8`, `z80u`, `z80`, `pdp11`, `i8086`, `armm4`, `armm0` or `esp8266` |
+| `FUZIX_PLATFORM`           | `v8080`     | Target board: `v8080`, `rcbus-8080`, `rcbus-8085`, `rcbus-8070`, `rcbus-6800`, `rcbus-z8`, `rcbus-super8`, `rcbus-80c188`, `2063`, `amprolb`, `cpc6128`, `c128-z80`, `cpcsme`, `zxuno`, `zxevo`, `zx+3`, `tm4c129x`, `rpipico`, `pdp11`, `ibmpc`, `esp8266`, or any of the 19 `z80u` boards (`z80pack`, `aqplus`, `nascom`, `z80-mbc2`, … — see ARCHITECTURE.md). The right memory manager / multiprocess default is selected per board, so a bare `-DFUZIX_PLATFORM=<b>` just works. |
 | `FUZIX_Z80U_MODE`          | `normal`    | z80u low-level: `normal` (common RAM) or `thunked` |
 | `FUZIX_MM`                 | `bankfixed` | Memory manager (see below)                   |
 | `FUZIX_MEMALLOC`           | `none`      | User allocator: `none` or `malloc`           |

@@ -73,9 +73,9 @@ set(FUZIX_SUBVERSION "\"\"" CACHE STRING "FUZIX subversion string")
 # ---------------------------------------------------------------------------
 set(FUZIX_CPU      "i8080" CACHE STRING "Target CPU: i8080 | z80u")
 set(FUZIX_PLATFORM "v8080" CACHE STRING "Target platform/board: v8080 | z80pack")
-set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 6800 z8 super8 z80u z80 pdp11 i8086 armm4 armm0)
+set_property(CACHE FUZIX_CPU      PROPERTY STRINGS i8080 i8085 8070 6800 z8 super8 z80u z80 pdp11 i8086 armm4 armm0 esp8266)
 set_property(CACHE FUZIX_PLATFORM PROPERTY STRINGS
-    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-6800 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x rpipico pdp11 ibmpc
+    v8080 z80pack rcbus-8080 rcbus-8085 rcbus-8070 rcbus-6800 rcbus-z8 rcbus-super8 rcbus-80c188 tm4c129x rpipico pdp11 ibmpc esp8266
     # z80u boards
     aqplus challengeriii lobo-max80 nascom nano-z80 rc2014-tiny rcbus-tp128
     sbcv2 sbc2g sc720 z80membership z1013 zrc z80all z80-mbc2 z80retro
@@ -143,6 +143,8 @@ elseif(FUZIX_PLATFORM MATCHES "^(rcbus-8070|rcbus-6800)$")
     set(_mm_default "bank16kfc")  # 4x16K flash-friendly banked
 elseif(FUZIX_PLATFORM STREQUAL "tm4c129x")
     set(_mm_default "flat")       # ARM Cortex-M flat address space
+elseif(FUZIX_PLATFORM STREQUAL "esp8266")
+    set(_mm_default "custom")     # platform swapper.c is the MM; no mm/*.c, empty -D
 else()
     set(_mm_default "bankfixed")
 endif()
@@ -150,7 +152,7 @@ set(FUZIX_MM "${_mm_default}" CACHE STRING "Kernel memory manager")
 set_property(CACHE FUZIX_MM PROPERTY STRINGS
     bankfixed banksplit simple
     bank8k bank16k bank16k_low bank32k bank16kfc bank8086 bank65c816
-    flat flat_small unbanked)
+    flat flat_small unbanked custom)
 
 set(_mm_bankfixed_src   mm/bankfixed.c)
 set(_mm_bankfixed_def   CONFIG_BANK_FIXED)
@@ -178,6 +180,11 @@ set(_mm_flat_small_src  mm/flat_small.c)
 set(_mm_flat_small_def  CONFIG_FLAT_SMALL)
 set(_mm_unbanked_src    mm/unbanked.c)
 set(_mm_unbanked_def    "")
+# "custom": the platform supplies its own memory manager source (e.g. esp8266's
+# swapper.c, compiled by its platform fragment) - no generic mm/*.c is linked
+# and no -DCONFIG_* MM define is passed.
+set(_mm_custom_src      "")
+set(_mm_custom_def      "")
 
 if(NOT DEFINED _mm_${FUZIX_MM}_src)
     message(FATAL_ERROR "Unknown FUZIX_MM='${FUZIX_MM}'")
@@ -185,7 +192,14 @@ endif()
 set(MM_SOURCE "${_mm_${FUZIX_MM}_src}")
 set(MM_DEFINE "${_mm_${FUZIX_MM}_def}")
 
-set(FUZIX_MEMALLOC "none" CACHE STRING "User memory allocator (none|malloc)")
+# esp8266 manages user memory with malloc (config.h drives its custom swapper);
+# other boards default to the no-op allocator.
+if(FUZIX_PLATFORM STREQUAL "esp8266")
+    set(_memalloc_default "malloc")
+else()
+    set(_memalloc_default "none")
+endif()
+set(FUZIX_MEMALLOC "${_memalloc_default}" CACHE STRING "User memory allocator (none|malloc)")
 set_property(CACHE FUZIX_MEMALLOC PROPERTY STRINGS none malloc)
 if(FUZIX_MEMALLOC STREQUAL "none")
     set(MEMALLOC_SOURCE mm/memalloc_none.c)
@@ -216,7 +230,14 @@ else()
     set(BLK_SOURCE core/blk400.c)
 endif()
 
-set(FUZIX_EXECFORMAT "16" CACHE STRING "Executable loader (16|32|elf32|none)")
+# esp8266 has a custom exec format (its own platform syscall_exec.c), so no
+# generic syscall_exec<fmt>.c is added; other boards default to the 16-bit loader.
+if(FUZIX_PLATFORM STREQUAL "esp8266")
+    set(_execformat_default "none")
+else()
+    set(_execformat_default "16")
+endif()
+set(FUZIX_EXECFORMAT "${_execformat_default}" CACHE STRING "Executable loader (16|32|elf32|none)")
 set_property(CACHE FUZIX_EXECFORMAT PROPERTY STRINGS 16 32 elf32 none)
 
 # ---------------------------------------------------------------------------
@@ -480,6 +501,13 @@ elseif(LINK_STYLE STREQUAL "arm-elf")
                    "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
     set(_link_dep "${LINK_SCRIPT}")
     set(_link_comment "arm-ld -T --entry=start -> fuzix.elf")
+elseif(LINK_STYLE STREQUAL "xtensa-elf")
+    # gcc/esp8266: link through the compiler driver with TWO scripts + LTO ->
+    # ELF image (xtensa-lx106-elf-gcc -T kernel.ld -T addresses.ld -flto ...).
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/link-image-esp8266.sh.in"
+                   "${CMAKE_BINARY_DIR}/link-image.sh" @ONLY)
+    set(_link_dep "${LINK_SCRIPT}" "${LINK_SCRIPT2}")
+    set(_link_comment "xtensa-gcc -T kernel.ld -T addresses.ld -flto -> fuzix.elf")
 elseif(LINK_STYLE STREQUAL "sdcc-banked")
     # Banked ZX boards: host-built bank-aware sdld + bihx/binman/bin2sna/bin2z80.
     set(MAKEBIN_BIN "${FUZIX_TOOLCHAIN_PREFIX}/bin/makebin")
